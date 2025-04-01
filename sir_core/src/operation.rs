@@ -1,4 +1,4 @@
-use diagnostics::diagnostics::{emit_error, DiagnosticsEmitter, LocatableObject};
+use diagnostics::diagnostics::{emit_error, LocatableObject};
 use iostreams::location::Location;
 use parse::{lexer::TokenValue, parser::Parser};
 
@@ -10,7 +10,7 @@ use crate::{
     ir_parser::{IRParsableObject, IRParsableObjectWithContext, IRParser, OperationParserState},
     ir_printer::{IRPrintableObject, IRPrinter, IRPrinterOptions},
     ir_visitor::{walk_ir, walk_ir_mut, IRVisitor, IRVisitorMut, WalkOlder},
-    op_interfaces::{BuiltinOpInterfaceWrapper, OpInterfaceObject},
+    op_interfaces::{BuiltinOp, OpInterfaceObject},
     op_tags::{OperationTag, TAG_TERMINATOR_OP},
     operation_type::{OperationTypeInfos, OperationTypeRef, OperationTypeUID},
     types::Type,
@@ -37,36 +37,6 @@ pub trait OperationImpl<'a> {
     // Returns true only for GenericOperation class
     fn is_generic_op() -> bool {
         false
-    }
-
-    //////////////////////////////////////////////
-    // Builtin interface implementation.
-    //////////////////////////////////////////////
-
-    // Verify if the op result is correct.
-    fn verify(&self, _diagnostics: &mut DiagnosticsEmitter) {
-        // Default: nothing to verify.
-    }
-
-    fn custom_print(&self, _printer: &mut IRPrinter) -> Result<(), std::io::Error> {
-        panic!("Missing custom_print implementation for {}", self.opname())
-    }
-
-    fn custom_parse(
-        parser: &mut IRParser,
-        _ctx: &mut IRContext,
-        st: &mut OperationParserState,
-    ) -> Option<()> {
-        let loc = parser.get_next_token_loc();
-        emit_error(
-            parser,
-            &loc,
-            format!(
-                "No custom parser available for op `{}`",
-                st.get_raw_opname().unwrap()
-            ),
-        );
-        return None;
     }
 
     //////////////////////////////////////////////
@@ -119,9 +89,10 @@ pub trait OperationImpl<'a> {
         }
     }
 
-    // Returns the builtin interface impl of the op. (or None if the op isn't registered).
-    fn get_op_builtin_interface(&self) -> Option<&'a dyn BuiltinOpInterfaceWrapper> {
-        Some(self.get_op_type_infos()?.builtin_interface())
+    // Returns the BuiltinOp interface implementation of the op. (or None is the op isn't registered).
+    fn get_builtin_op_interface(&self) -> Option<BuiltinOp<'a>> {
+        let wrapper = self.get_op_type_infos()?.builtin_interface();
+        Some(BuiltinOp::get_from_builtin_interface(wrapper, self.get_context(), self.get_op_data()))
     }
 
     // Returns true if the op has the tag.
@@ -300,10 +271,6 @@ impl<'a> OperationImpl<'a> for GenericOperation<'a> {
     fn is_generic_op() -> bool {
         true
     }
-
-    fn verify(&self, _diagnostics: &mut DiagnosticsEmitter) {
-        panic!("Verify shouldn't be called directly, use IRVerifier instead")
-    }
 }
 
 impl<'a> GenericOperation<'a> {
@@ -380,103 +347,6 @@ impl<'a> LocatableObject for GenericOperation<'a> {
     }
 }
 
-fn print_op_results_and_name<'a>(
-    op: GenericOperation<'a>,
-    printer: &mut IRPrinter,
-    use_custom_printer: bool,
-) -> Result<(), std::io::Error> {
-    // Print optional op outputs.
-    if op.get_num_outputs() > 0 {
-        for (idx, input) in op.get_outputs().enumerate() {
-            printer.assign_and_print_value_label(input.as_id(), false)?;
-            if idx + 1 < op.get_num_outputs() {
-                write!(printer.os(), ", ")?;
-            }
-        }
-        write!(printer.os(), " = ")?;
-    }
-
-    // Print opname.
-    if use_custom_printer {
-        write!(printer.os(), "{} ", op.opname())
-    } else {
-        write!(printer.os(), "\"{}\"", op.opname())
-    }
-}
-
-// Printer implementation for ops of the generic form
-fn print_op_generic_form<'a>(
-    op: GenericOperation<'a>,
-    printer: &mut IRPrinter,
-) -> Result<(), std::io::Error> {
-    // Print outputs and opname
-    print_op_results_and_name(op, printer, false)?;
-
-    // Print op inputs
-    write!(printer.os(), "(")?;
-    for (idx, input) in op.get_inputs().enumerate() {
-        printer.print_value_label_or_unknown(input.as_id())?;
-        if idx + 1 < op.get_num_inputs() {
-            write!(printer.os(), ", ")?;
-        }
-    }
-    write!(printer.os(), ")")?;
-
-    // Print optional op attrs.
-    if !op.get_attrs_dict().is_empty() {
-        write!(printer.os(), " ")?;
-        printer.print(op.get_attrs_dict())?;
-    }
-
-    // Print the signature
-    write!(printer.os(), " : (")?;
-    for (idx, input) in op.get_inputs().enumerate() {
-        printer.print(input.get_type())?;
-        if idx + 1 < op.get_num_inputs() {
-            write!(printer.os(), ", ")?;
-        }
-    }
-    write!(printer.os(), ") -> (")?;
-    for (idx, output) in op.get_outputs().enumerate() {
-        printer.print(output.get_type())?;
-        if idx + 1 < op.get_num_outputs() {
-            write!(printer.os(), ", ")?;
-        }
-    }
-    write!(printer.os(), ")")?;
-
-    // Print the blocks
-    if op.get_num_blocks() > 0 {
-        write!(printer.os(), " {{")?;
-        printer.nl_inc_indent()?;
-        for block in op.get_blocks() {
-            block.print(printer)?;
-            printer.newline()?;
-        }
-        printer.nl_dec_indent()?;
-        write!(printer.os(), "}}")?;
-    }
-
-    Ok(())
-}
-
-// Either print with the generic form or dispatch to custom printer if available.
-pub fn print_op_dispatch<'a, T: OperationImpl<'a>>(
-    op: T,
-    printer: &mut IRPrinter,
-    use_custom_printer: bool,
-) -> Result<(), std::io::Error> {
-    // For both forms we print the results and the opname.
-    let op_generic = GenericOperation::make(op.get_context(), op.as_id());
-
-    if use_custom_printer {
-        print_op_results_and_name(op_generic, printer, true)?;
-        op.custom_print(printer)
-    } else {
-        print_op_generic_form(op_generic, printer)
-    }
-}
-
 // Override the printer for all ops object to call the dispatch.
 impl<'b, T: OperationImpl<'b>> IRPrintableObject for T {
     fn print(&self, printer: &mut IRPrinter) -> Result<(), std::io::Error> {
@@ -484,16 +354,16 @@ impl<'b, T: OperationImpl<'b>> IRPrintableObject for T {
         printer.setup_ir_infos(generic_op);
 
         if printer.always_use_generic_form() {
-            return print_op_generic_form(generic_op, printer);
+            return printer.print_op_generic_form_impl(generic_op);
         }
 
         // Get the builtin interface or call the generic printer for unregistered ops.
-        let builtin_interface = match generic_op.get_op_builtin_interface() {
+        let builtin_interface = match generic_op.get_builtin_op_interface() {
             Some(int) => int,
-            None => return print_op_generic_form(generic_op, printer),
+            None => return printer.print_op_generic_form_impl(generic_op),
         };
 
-        builtin_interface.custom_print(printer, self.get_context(), self.as_id())
+        builtin_interface.custom_print(printer)
     }
 }
 

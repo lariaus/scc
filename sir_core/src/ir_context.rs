@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use iostreams::location::Location;
 
@@ -410,8 +410,9 @@ impl IRContext {
 
         assert!(op_data.blocks().is_empty(), "op must not have any block");
 
-        // Remove from the users of the operands
-        let operands: Vec<ValueID> = op_data.inputs().iter().map(|v| *v).collect();
+        // Remove from the users of the operands.
+        // Use a set as an op might have the same operand multiple times.
+        let operands: HashSet<ValueID> = op_data.inputs().iter().map(|v| *v).collect();
         for val in &operands {
             let val = self.get_value_data_mut(*val);
             val.erase_user(op);

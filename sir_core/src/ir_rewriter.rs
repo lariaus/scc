@@ -192,4 +192,63 @@ impl<'a> IRRewriter<'a> {
             changes.op_change = Some(OpChange::Erased);
         }
     }
+
+    /// Replace all outputs of op with all outputs of `new_op, and then erase `op`.
+    /// It doesn't check anything about the validity of the values.
+    pub fn replace_op_with_op(&mut self, op: OperationID, new_op: OperationID) {
+        // Check we can do the modification.
+        if let Some(updating_op) = self.updating_op {
+            assert!(updating_op == op, "You can only modify the current op");
+        }
+
+        // Get the old outputs.
+        let old_values: Vec<ValueID> = self
+            .ctx()
+            .get_generic_operation(op)
+            .get_outputs()
+            .map(|v| v.as_id())
+            .collect();
+
+        // Get the new outputs.
+        let new_values: Vec<ValueID> = self
+        .ctx()
+        .get_generic_operation(new_op)
+        .get_outputs()
+        .map(|v| v.as_id())
+        .collect();
+
+        assert_eq!(
+            old_values.len(),
+            new_values.len(),
+            "The number of outputs of new_op doesn't match the number of outputs of op"
+        );
+
+        if self.debug_mode() {
+            eprintln!(
+                    "IRRewriter: replace op `{}` with `{}`",
+                    self.ctx().get_generic_operation(op).to_string_repr(),
+                    self.ctx().get_generic_operation(new_op).to_string_repr(),
+            );
+        }
+
+        // Replace the outputs.
+        for (old_val, new_val) in old_values.iter().zip(new_values) {
+            self.ctx().replace_all_uses_of_value(*old_val, new_val);
+        }
+
+        // Erase the op.
+        if self.debug_mode() {
+            eprintln!(
+                "IRRewriter: erase op `{}`",
+                self.ctx().get_generic_operation(op).to_string_repr()
+            );
+        }
+        self.ctx().erase_op(op);
+
+        // Update the changes object.
+        if let Some(changes) = &mut self.updating_changes {
+            assert!(changes.op_change.is_none(), "op already remplaced");
+            changes.op_change = Some(OpChange::ReplacedWithOp(new_op));
+        }
+    }
 }

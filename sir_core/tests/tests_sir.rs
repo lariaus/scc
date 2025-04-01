@@ -1,4 +1,4 @@
-use sir_core::sir_opt_runner::SIROptRunner;
+use sir_core::{compiler_setup::CompilerSetup, ir_context::IRContext, pass_manager::register_core_passes, sir_opt_runner::SIROptRunner};
 use test_ops::register_test_ops;
 use xtest::{
     test_driver::{OutputTestWriter, TestDriver, TestRunner},
@@ -9,6 +9,14 @@ mod test_ops;
 
 #[derive(Default)]
 struct SIROptTestRunner {}
+
+fn register_ops(ctx: &mut IRContext) {
+    register_test_ops(ctx);
+}
+
+fn setup_compiler(cs: &mut CompilerSetup) {
+    register_core_passes(cs);
+}
 
 impl TestRunner for SIROptTestRunner {
     fn get_runner_name(&self) -> &'static str {
@@ -24,7 +32,8 @@ impl TestRunner for SIROptTestRunner {
         runner.set_manually_pass_input_file(true);
         runner.set_input_path(cfg.path().to_owned());
 
-        runner.register_setup_ctx_callback(register_test_ops);
+        runner.register_setup_ctx_callback(register_ops);
+        runner.register_setup_callback(setup_compiler);
 
         let args = cfg.command()[1..].iter().map(|x| x.to_owned()).collect();
         runner.setup(args);
@@ -63,4 +72,9 @@ fn test_add_verifier() {
 #[test]
 fn test_fun_verifier() {
     run_xtest("test_fun_verifier.sir");
+}
+
+#[test]
+fn test_cse() {
+    run_xtest("test_cse.sir");
 }

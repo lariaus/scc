@@ -53,6 +53,14 @@ Usage:
 cargo run --bin sir-opt -- -i sir_math/tests/test_iadd_i32.sir
 ```
 
+### xgen
+
+XGen is a python library used to generate rust code for all the op defs.
+It's the equivalent of TableGEN in MLIR / LLVM.
+All definitions are written using special comments in the source file.
+ALL XGEN is doing is reading these comments and transforming them to a "JSON" representation.
+Then special hooks for SIR transform those JSON representation into actual rust code.
+
 ### xtest
 
 Helper library to write unit tests.

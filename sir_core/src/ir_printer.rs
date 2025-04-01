@@ -4,7 +4,7 @@ use iostreams::output_source_stream::OutputSourceStream;
 
 use crate::{
     block::Block,
-    ir_data::{OperationID, ValueID},
+    ir_data::{BlockID, OperationID, ValueID},
     operation::{GenericOperation, OperationImpl},
 };
 
@@ -185,8 +185,9 @@ pub struct IRPrinter {
     ident: usize,
     value_defs: ValueDefsMap,
     use_generic_form: bool,
-    // Optional printed root op
+    // Optional printed root op / block
     root_op: Option<OperationID>,
+    root_block: Option<BlockID>,
 }
 
 impl IRPrinter {
@@ -201,6 +202,7 @@ impl IRPrinter {
             value_defs: ValueDefsMap::new(),
             use_generic_form,
             root_op: None,
+            root_block: None,
         }
     }
 
@@ -214,6 +216,7 @@ impl IRPrinter {
             value_defs: ValueDefsMap::new(),
             use_generic_form,
             root_op: None,
+            root_block: None,
         }
     }
 
@@ -260,7 +263,7 @@ impl IRPrinter {
     // Call this every time before printing an op.
     // Ensures it get all infos before printing.
     pub fn setup_ir_infos(&mut self, op: GenericOperation) {
-        if self.root_op.is_some() {
+        if self.root_op.is_some() || self.root_block.is_some() {
             return;
         }
 
@@ -270,7 +273,10 @@ impl IRPrinter {
     }
 
     // Call this when starting to print a block.
-    pub fn start_printing_block(&mut self) {
+    pub fn start_printing_block(&mut self, block: Block) {
+        if self.root_op.is_none() && self.root_block.is_none() {
+            self.root_block = Some(block.as_id());
+        }
         self.value_defs.open_scope();
     }
 
@@ -336,6 +342,90 @@ impl IRPrinter {
     pub fn print<T: IRPrintableObject>(&mut self, obj: &T) -> Result<(), std::io::Error> {
         obj.print(self)
     }
+
+    // Print an op using the generic form.
+    // Must be called for custom_print implementation of ops don't have a custom printer
+    pub fn print_op_generic_form_impl(
+        &mut self,
+        op: GenericOperation,
+    ) -> Result<(), std::io::Error> {
+        // Print outputs and opname
+        self.print_op_results_and_opname(op, false)?;
+
+        // Print op inputs
+        write!(self.os.os(), "(")?;
+        for (idx, input) in op.get_inputs().enumerate() {
+            self.print_value_label_or_unknown(input.as_id())?;
+            if idx + 1 < op.get_num_inputs() {
+                write!(self.os.os(), ", ")?;
+            }
+        }
+        write!(self.os.os(), ")")?;
+
+        // Print optional op attrs.
+        if !op.get_attrs_dict().is_empty() {
+            write!(self.os.os(), " ")?;
+            self.print(op.get_attrs_dict())?;
+        }
+
+        // Print the signature
+        write!(self.os.os(), " : (")?;
+        for (idx, input) in op.get_inputs().enumerate() {
+            self.print(input.get_type())?;
+            if idx + 1 < op.get_num_inputs() {
+                write!(self.os.os(), ", ")?;
+            }
+        }
+        write!(self.os.os(), ") -> (")?;
+        for (idx, output) in op.get_outputs().enumerate() {
+            self.print(output.get_type())?;
+            if idx + 1 < op.get_num_outputs() {
+                write!(self.os.os(), ", ")?;
+            }
+        }
+        write!(self.os.os(), ")")?;
+
+        // Print the blocks
+        if op.get_num_blocks() > 0 {
+            write!(self.os.os(), " {{")?;
+            self.nl_inc_indent()?;
+            for block in op.get_blocks() {
+                self.print(&block)?;
+                self.newline()?;
+            }
+            self.nl_dec_indent()?;
+            write!(self.os.os(), "}}")?;
+        }
+
+        Ok(())
+    }
+
+    /// Print the op results and its opname.
+    /// Should be called by custom printer of ops, to start printing.
+    pub fn print_op_results_and_opname(
+        &mut self,
+        op: GenericOperation,
+        use_custom_form: bool,
+    ) -> Result<(), std::io::Error> {
+        // Print optional op outputs.
+        if op.get_num_outputs() > 0 {
+            for (idx, input) in op.get_outputs().enumerate() {
+                self.assign_and_print_value_label(input.as_id(), false)?;
+                if idx + 1 < op.get_num_outputs() {
+                    write!(self.os.os(), ", ")?;
+                }
+            }
+            write!(self.os.os(), " = ")?;
+        }
+    
+        // Print opname.
+        if use_custom_form {
+            write!(self.os.os(), "{} ", op.opname())
+        } else {
+            write!(self.os.os(), "\"{}\"", op.opname())
+        }
+    }
+
 }
 
 // Implement this trait for an object to be printable in the IR.

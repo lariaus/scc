@@ -96,7 +96,7 @@ impl<'a> From<Block<'a>> for BlockID {
 
 impl<'b> IRPrintableObject for Block<'b> {
     fn print(&self, printer: &mut IRPrinter) -> Result<(), std::io::Error> {
-        printer.start_printing_block();
+        printer.start_printing_block(*self);
 
         // Print the arguments.
         write!(printer.os(), "^(")?;

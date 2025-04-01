@@ -6,39 +6,11 @@ use diagnostics::diagnostics::DiagnosticsEmitter;
 use crate::{
     attributes::Attribute,
     ir_context::IRContext,
-    ir_data::{OperationData, OperationID},
+    ir_data::OperationData,
     ir_parser::{IRParser, OperationParserState},
     ir_printer::IRPrinter,
     operation::OperationImpl,
 };
-
-/////////////////////////////////////////////////////////////////////////
-// Builtin Operation Interface
-/////////////////////////////////////////////////////////////////////////
-
-// The builtin interface must be implemented by all operations.
-
-// Wrapper for the builtin interface.
-pub trait BuiltinOpInterfaceWrapper {
-    fn verify(&self, ctx: &IRContext, op: OperationID, diagnostics: &mut DiagnosticsEmitter);
-
-    fn custom_print(
-        &self,
-        printer: &mut IRPrinter,
-        ctx: &IRContext,
-        op: OperationID,
-    ) -> Result<(), std::io::Error>;
-
-    fn custom_parse(
-        &self,
-        parser: &mut IRParser,
-        ctx: &mut IRContext,
-        st: &mut OperationParserState,
-    ) -> Option<()>;
-
-    // @TODO[I1][SIR-CORE]: Remove BuiltinOpInterfaceWrapper.clone() hack
-    fn clone(&self) -> Box<dyn BuiltinOpInterfaceWrapper>;
-}
 
 /////////////////////////////////////////////////////////////////////////
 // OpInterface Base
@@ -86,20 +58,149 @@ pub trait OpInterfaceBuilder {
 }
 
 /////////////////////////////////////////////////////////////////////////
+// BuiltinOp Interface
+/////////////////////////////////////////////////////////////////////////
+
+// This interface must be implemented by every operation.
+
+// @TODO[I1][SIR-CORE]: Remove BuiltinOpInterfaceWrapper.clone() hack
+
+// @XGENDEF:SIRInterface BuiltinOp
+// @+method {{ verify(diagnostics: "&mut DiagnosticsEmitter") }}
+// @+method {{ custom_print(printer: "&mut IRPrinter") 
+//   -> "Result<(), std::io::Error>" }}
+// @+staticmethod {{ custom_parse(parser: "&mut IRParser", ctx: "&mut IRContext", st: "&mut OperationParserState")
+//   -> "Option<()>" }}
+// @+staticmethod {{ clone() -> "BuiltinOpInterfaceImplWrapper" }}
+
+// @XGENBEGIN
+// Unique identifier for the BuiltinOp Interface
+const BUILTIN_OP_INTERFACE_UID: OpInterfaceUID = OpInterfaceUID::make_from_interface_identifier("BuiltinOp");
+
+// Interface Implementation for the BuiltinOp interface.
+pub trait BuiltinOpInterfaceImpl {
+    fn verify<'a>(&self, ctx: &'a IRContext, data: &'a OperationData, diagnostics: &mut DiagnosticsEmitter);
+    fn custom_print<'a>(&self, ctx: &'a IRContext, data: &'a OperationData, printer: &mut IRPrinter) -> Result<(), std::io::Error>;
+    fn custom_parse(&self, parser: &mut IRParser, ctx: &mut IRContext, st: &mut OperationParserState) -> Option<()>;
+    fn clone(&self) -> BuiltinOpInterfaceImplWrapper;
+}
+
+
+// Wrapper object holding an implementation of the BuiltinOp interface.
+pub struct BuiltinOpInterfaceImplWrapper {
+    dyn_impl: Box<dyn BuiltinOpInterfaceImpl>,
+}
+
+impl BuiltinOpInterfaceImplWrapper {
+    pub fn new(dyn_impl: Box<dyn BuiltinOpInterfaceImpl>) -> Self {
+        Self { dyn_impl }
+    }
+}
+
+impl OpInterfaceWrapper for BuiltinOpInterfaceImplWrapper {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+//Definition of helper functions for the static methods of BuiltinOp interface.
+impl BuiltinOpInterfaceImplWrapper {
+    pub fn custom_parse(&self, parser: &mut IRParser, ctx: &mut IRContext, st: &mut OperationParserState) -> Option<()> {
+        self.dyn_impl.custom_parse(parser, ctx, st)
+    }
+    pub fn clone(&self) -> BuiltinOpInterfaceImplWrapper {
+        self.dyn_impl.clone()
+    }
+}
+
+
+// Object to materialize an operation that implements the BuiltinOp interface.
+pub struct BuiltinOp<'a> {
+    wrapper: &'a BuiltinOpInterfaceImplWrapper,
+    ctx: &'a IRContext,
+    data: &'a OperationData,
+}
+
+impl<'a> OpInterfaceObject<'a> for BuiltinOp<'a> {
+    fn get_interface_uid() -> OpInterfaceUID {
+        BUILTIN_OP_INTERFACE_UID
+    }
+
+    fn make(
+        wrapper: &'a dyn OpInterfaceWrapper,
+        ctx: &'a IRContext,
+        data: &'a OperationData,
+    ) -> Self {
+        let wrapper = wrapper
+            .as_any()
+            .downcast_ref::<BuiltinOpInterfaceImplWrapper>()
+            .unwrap();
+        Self { ctx, data, wrapper }
+    }
+}
+
+impl<'a> OperationImpl<'a> for BuiltinOp<'a> {
+    fn make_from_data(_ctx: &'a IRContext, _data: &'a OperationData) -> Self {
+        panic!("Not supported for InterfaceOp")
+    }
+
+    fn get_op_data(&self) -> &'a OperationData {
+        &self.data
+    }
+
+    fn get_context(&self) -> &'a IRContext {
+        &self.ctx
+    }
+
+    fn get_op_type_uid() -> crate::operation_type::OperationTypeUID {
+        panic!("Cannot get the TypeUID of an InterfaceOp")
+    }
+}
+
+// Methods implementation for BuiltinOp.
+impl<'a> BuiltinOp<'a> {
+    pub fn verify(&self, diagnostics: &mut DiagnosticsEmitter) {
+        self.wrapper.dyn_impl.verify(&self.ctx, &self.data, diagnostics)
+    }
+    pub fn custom_print(&self, printer: &mut IRPrinter) -> Result<(), std::io::Error> {
+        self.wrapper.dyn_impl.custom_print(&self.ctx, &self.data, printer)
+    }
+}
+
+// @XGENEND
+
+impl<'a> BuiltinOp<'a> {
+    // Special implementation since the BuiltinOpInterface isn't dynamic like the others.
+    // We can create it more easily.
+    pub(crate) fn get_from_builtin_interface(
+        wrapper: &'a BuiltinOpInterfaceImplWrapper,
+        ctx: &'a IRContext,
+    data: &'a OperationData) -> Self {
+        Self {
+            wrapper, ctx, data
+        }
+    }
+}
+
+
+/////////////////////////////////////////////////////////////////////////
 // ConstantOp Interface
 /////////////////////////////////////////////////////////////////////////
 
 // This interface can be implemented by any op which is constant, and hold a constant attribute value.
 
-/// Unique identifier for the ConstantOp Interface
-const CONSTANT_OP_INTERFACE_UID: OpInterfaceUID =
-    OpInterfaceUID::make_from_interface_identifier("sir_core::constant_op");
+// @XGENDEF:SIRInterface ConstantOp
+// @+method {{ get_value() -> "&'a Attribute" }}
 
-/// Interface Implementation for the ConstantOp interface.
+// @XGENBEGIN
+// Unique identifier for the ConstantOp Interface
+const CONSTANT_OP_INTERFACE_UID: OpInterfaceUID = OpInterfaceUID::make_from_interface_identifier("ConstantOp");
+
+// Interface Implementation for the ConstantOp interface.
 pub trait ConstantOpInterfaceImpl {
-    // Returns the constant value of the operation.
     fn get_value<'a>(&self, ctx: &'a IRContext, data: &'a OperationData) -> &'a Attribute;
 }
+
 
 // Wrapper object holding an implementation of the ConstantOp interface.
 pub struct ConstantOpInterfaceImplWrapper {
@@ -118,17 +219,16 @@ impl OpInterfaceWrapper for ConstantOpInterfaceImplWrapper {
     }
 }
 
+//Definition of helper functions for the static methods of ConstantOp interface.
+impl ConstantOpInterfaceImplWrapper {
+}
+
+
 // Object to materialize an operation that implements the ConstantOp interface.
 pub struct ConstantOp<'a> {
     wrapper: &'a ConstantOpInterfaceImplWrapper,
     ctx: &'a IRContext,
     data: &'a OperationData,
-}
-
-impl<'a> ConstantOp<'a> {
-    pub fn get_value(&self) -> &'a Attribute {
-        self.wrapper.dyn_impl.get_value(&self.ctx, &self.data)
-    }
 }
 
 impl<'a> OpInterfaceObject<'a> for ConstantOp<'a> {
@@ -166,3 +266,12 @@ impl<'a> OperationImpl<'a> for ConstantOp<'a> {
         panic!("Cannot get the TypeUID of an InterfaceOp")
     }
 }
+
+// Methods implementation for ConstantOp.
+impl<'a> ConstantOp<'a> {
+    pub fn get_value(&self) -> &'a Attribute {
+        self.wrapper.dyn_impl.get_value(&self.ctx, &self.data)
+    }
+}
+
+// @XGENEND

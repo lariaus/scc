@@ -10,7 +10,7 @@ test.fun @add_i32(%arg0: i32, %arg1: i32) -> (i32) {
 }
 
 
-// CHECK: Error: TestAdd must have integer type inputs
+// CHECK: Error: Input #0 (lhs) must be of type `Integer`, but got f32
 // CHECK-NEXT: %0 = test.add %arg0, %arg1 : f32
 test.fun @fail_add_int_type(%arg0: f32, %arg1: f32) -> (f32) {
     %0 = test.add %arg0, %arg1 : f32

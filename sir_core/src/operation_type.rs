@@ -4,7 +4,7 @@ use const_fnv1a_hash::fnv1a_hash_str_64;
 
 use crate::{
     op_interfaces::{
-        BuiltinOpInterfaceWrapper, OpInterfaceBuilder, OpInterfaceUID, OpInterfaceWrapper,
+        BuiltinOpInterfaceImpl, BuiltinOpInterfaceImplWrapper, OpInterfaceBuilder, OpInterfaceUID, OpInterfaceWrapper
     },
     op_tags::OperationTag,
     operation::OperationImpl,
@@ -26,7 +26,7 @@ impl OperationTypeUID {
 pub struct OperationTypeInfos {
     uid: OperationTypeUID,
     opname: &'static str,
-    builtin_interface: Box<dyn BuiltinOpInterfaceWrapper>,
+    builtin_interface: BuiltinOpInterfaceImplWrapper,
     tags: HashSet<OperationTag>,
     interfaces: HashMap<OpInterfaceUID, Box<dyn OpInterfaceWrapper>>,
 }
@@ -35,7 +35,7 @@ impl OperationTypeInfos {
     fn new(
         uid: OperationTypeUID,
         opname: &'static str,
-        builtin_interface: Box<dyn BuiltinOpInterfaceWrapper>,
+        builtin_interface: BuiltinOpInterfaceImplWrapper,
         tags: HashSet<OperationTag>,
         interfaces: HashMap<OpInterfaceUID, Box<dyn OpInterfaceWrapper>>,
     ) -> Self {
@@ -59,8 +59,8 @@ impl OperationTypeInfos {
     }
 
     // Returns the builtin op interface
-    pub fn builtin_interface(&self) -> &dyn BuiltinOpInterfaceWrapper {
-        &*self.builtin_interface
+    pub fn builtin_interface(&self) -> &BuiltinOpInterfaceImplWrapper {
+        &self.builtin_interface
     }
 
     // Returns true if the op has the associated tag.
@@ -69,7 +69,7 @@ impl OperationTypeInfos {
     }
 
     // TODO: Hack for parser.
-    pub fn cloned_builtin_interface(&self) -> Box<dyn BuiltinOpInterfaceWrapper> {
+    pub fn cloned_builtin_interface(&self) -> BuiltinOpInterfaceImplWrapper {
         self.builtin_interface.clone()
     }
 
@@ -95,7 +95,7 @@ pub enum OperationTypeRef {
 pub struct OperationTypeBuilder {
     opname: Option<&'static str>,
     uid: Option<OperationTypeUID>,
-    builtin_interface: Option<Box<dyn BuiltinOpInterfaceWrapper>>,
+    builtin_interface: Option<BuiltinOpInterfaceImplWrapper>,
     tags: Option<HashSet<OperationTag>>,
     interfaces: HashMap<OpInterfaceUID, Box<dyn OpInterfaceWrapper>>,
 }
@@ -124,10 +124,11 @@ impl OperationTypeBuilder {
     }
 
     // Define the builtin_interface struct for the op.
-    pub fn set_builtin_interface<T: BuiltinOpInterfaceWrapper + Default + 'static>(&mut self) {
+    pub fn set_builtin_interface<T: BuiltinOpInterfaceImpl + Default + 'static>(&mut self) {
         assert!(self.builtin_interface.is_none());
         let wrapper: T = Default::default();
-        self.builtin_interface = Some(Box::new(wrapper));
+        let wrapper = BuiltinOpInterfaceImplWrapper::new(Box::new(wrapper));
+        self.builtin_interface = Some(wrapper);
     }
 
     // Set the tags of the current operation.

@@ -40,20 +40,20 @@ fn test_fun_op() {
 
     let add0 = b.create_op(loc, TestAddOp::_build(x, y, val_ty.clone()));
     let add0_id = add0.as_id();
-    let tmp0 = add0.result().as_id();
+    let tmp0 = add0.get_result().as_id();
 
     let add1 = b.create_op(loc, TestAddOp::_build(tmp0, z, val_ty.clone()));
-    let out = add1.result().as_id();
-    assert_eq!(add1.lhs().as_id(), tmp0);
-    assert_eq!(add1.rhs().as_id(), z);
+    let out = add1.get_result().as_id();
+    assert_eq!(add1.get_lhs().as_id(), tmp0);
+    assert_eq!(add1.get_rhs().as_id(), z);
 
     b.create_op(loc, TestReturnOp::_build(vec![out]));
 
     // We do this dance of convert to id then cast back just for testing cast.
     let add0 = ctx.get_generic_operation(add0_id);
     let add0 = add0.cast::<TestAddOp>().unwrap();
-    assert_eq!(add0.lhs().as_id(), x);
-    assert_eq!(add0.rhs().as_id(), y);
+    assert_eq!(add0.get_lhs().as_id(), x);
+    assert_eq!(add0.get_rhs().as_id(), y);
 
     let fun_op = ctx.get_generic_operation(fun_op);
     assert_eq!(fun_op.to_generic_form_string_repr(), "\"test.fun\"() {\"symbol_name\" = \"foo\", \"function_type\" = function<(i32, i32, i32) -> ()>} : () -> () {\n    ^(%arg0: i32, %arg1: i32, %arg2: i32) {\n        %0 = \"test.add\"(%arg0, %arg1) : (i32, i32) -> (i32)\n        %1 = \"test.add\"(%0, %arg2) : (i32, i32) -> (i32)\n        \"test.return\"(%1) : (i32) -> ()\n    }\n    \n}");
@@ -169,11 +169,11 @@ fn test_verify_use_before_def() {
     b.set_insertion_point(InsertionPoint::AtBeginOf(block));
 
     let add0 = b.create_op(loc, TestAddOp::_build(x, y, val_ty.clone()));
-    let tmp0 = add0.result().as_id();
+    let tmp0 = add0.get_result().as_id();
 
     // Second add is inserted before first.
     let add1 = b.create_op(loc, TestAddOp::_build(x, tmp0, val_ty.clone()));
-    let out = add1.result().as_id();
+    let out = add1.get_result().as_id();
 
     b.set_insertion_point(InsertionPoint::AtEndOf(block));
     b.create_op(loc, TestReturnOp::_build(vec![out]));
@@ -209,12 +209,12 @@ fn test_verify_invalid_type() {
 
     let res = b
         .create_op(loc, TestAddOp::_build(x, y, val_ty.clone()))
-        .result()
+        .get_result()
         .as_id();
     b.create_op(loc, TestReturnOp::_build(vec![res]));
 
     assert_eq!(verify_op(ctx.get_generic_operation(fun_op)).diagnostics_to_string(CompilerInputs::Unknown),
-    "IRVerifier: Error: TestAdd must have integer type inputs at I#0:0:0\n  See %0 = \"test.add\"(%arg0, %arg1) : (f32, f32) -> (f32).\n");
+    "IRVerifier: Error: Input #0 (lhs) must be of type `Integer`, but got f32 at I#0:0:0\n  See %0 = \"test.add\"(%arg0, %arg1) : (f32, f32) -> (f32).\nIRVerifier: Error: Input #1 (rhs) must be of type `Integer`, but got f32 at I#0:0:0\n  See %0 = \"test.add\"(%arg0, %arg1) : (f32, f32) -> (f32).\nIRVerifier: Error: Output #0 (result) must be of type `Integer`, but got f32 at I#0:0:0\n  See %0 = \"test.add\"(%arg0, %arg1) : (f32, f32) -> (f32).\n");
 }
 
 #[test]
@@ -237,7 +237,7 @@ fn test_verify_fun_invalid_operand_tye() {
 
     let res = b
         .create_op(loc, TestAddOp::_build(x, x, val_ty.clone()))
-        .result()
+        .get_result()
         .as_id();
     b.create_op(loc, TestReturnOp::_build(vec![res]));
 

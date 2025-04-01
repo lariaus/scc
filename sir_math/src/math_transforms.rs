@@ -40,12 +40,12 @@ impl OpTransform for CanonicalizeIAddOp {
         op: OperationID,
     ) -> ErrorOrSuccess {
         let add_op = rewriter.get_operation(op).cast::<MathIAddOp>().unwrap();
-        if is_const_zero(add_op.lhs()) {
-            let new_output = add_op.rhs().as_id();
+        if is_const_zero(add_op.get_lhs()) {
+            let new_output = add_op.get_rhs().as_id();
             rewriter.replace_op_with_values(op, &[new_output]);
             Ok(())
-        } else if is_const_zero(add_op.rhs()) {
-            let new_output = add_op.lhs().as_id();
+        } else if is_const_zero(add_op.get_rhs()) {
+            let new_output = add_op.get_lhs().as_id();
             rewriter.replace_op_with_values(op, &[new_output]);
             Ok(())
         } else {

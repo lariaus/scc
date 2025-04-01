@@ -1,7 +1,6 @@
 use std::{
     collections::HashMap,
     hash::{DefaultHasher, Hash, Hasher},
-    marker::PhantomData,
 };
 
 use diagnostics::diagnostics::{DiagnosticsEmitter, ErrorOrSuccess};
@@ -206,55 +205,69 @@ impl CSEPass {
         rewriter: &mut IRRewriter,
         block_id: BlockID,
     ) {
-        let mut ops_map = OperationHashSet::new(hash_operation, check_operation_eq);
-        let mut ops_to_erase = Vec::new();
-        let mut ops_to_replace = Vec::new();
 
-        let block = rewriter.get_block(block_id);
         if self.debug_mode {
+            let block = rewriter.get_block(block_id);
             eprintln!("Block before CSE:\n{}", block.to_string_repr());
         }
 
-        for op in block.get_ops() {
-            if !can_be_cse(op) {
-                continue;
-            }
-            if op.get_num_outputs() == 0 || op.get_outputs().all(|v| v.users_count() == 0) {
-                // The ops has no users, just erase it
-                if self.debug_mode {
-                    eprintln!(
-                        "CSE: Found operation without users: {}",
-                        op.to_string_repr()
-                    );
-                }
-                ops_to_erase.push(op.as_id());
-                continue;
-            }
+        // Keep applying until convergence
+        loop {
 
-            if let Some(same_op) = ops_map.find(op) {
-                assert!(same_op.as_id() != op.as_id());
-                // We find a match, mark it for replacement.
-                if self.debug_mode {
-                    eprintln!(
-                        "CSE: Found operation `{}` can that be replaced with `{}`",
-                        op.to_string_repr(),
-                        same_op.to_string_repr()
-                    );
+            let mut ops_map = OperationHashSet::new(hash_operation, check_operation_eq);
+            let mut ops_to_erase = Vec::new();
+            let mut ops_to_replace = Vec::new();
+
+            let block = rewriter.get_block(block_id);
+            for op in block.get_ops() {
+                if !can_be_cse(op) {
+                    continue;
+                }
+                if op.get_num_outputs() == 0 || op.get_outputs().all(|v| v.users_count() == 0) {
+                    // The ops has no users, just erase it
+                    if self.debug_mode {
+                        eprintln!(
+                            "CSE: Found operation without users: {}",
+                            op.to_string_repr()
+                        );
+                    }
+                    ops_to_erase.push(op.as_id());
+                    continue;
+                }
+
+                if let Some(same_op) = ops_map.find(op) {
+                    assert!(same_op.as_id() != op.as_id());
+                    // We find a match, mark it for replacement.
+                    if self.debug_mode {
+                        eprintln!(
+                            "CSE: Found operation `{}` can that be replaced with `{}`",
+                            op.to_string_repr(),
+                            same_op.to_string_repr()
+                        );
+                    }
                     ops_to_replace.push((op.as_id(), same_op.as_id()));
+                } else {
+                    // Just insert it in the map.
+                    ops_map.insert(op);
                 }
-            } else {
-                // Just insert it in the map.
-                ops_map.insert(op);
+            }
+
+            if ops_to_erase.is_empty() && ops_to_replace.is_empty() {
+                break;
+            }
+
+            // Now apply all the transforms
+            for op in ops_to_erase {
+                rewriter.erase_op(op);
+            }
+
+            for (old_op, new_op) in ops_to_replace {
+                rewriter.replace_op_with_op(old_op, new_op);
             }
         }
 
-        // Now apply all the transforms
-        for op in ops_to_erase {
-            // rewriter.
-        }
-
-        let block = rewriter.get_block(block_id);
         if self.debug_mode {
+            let block = rewriter.get_block(block_id);
             eprintln!("Block after CSE:\n{}", block.to_string_repr());
         }
     }

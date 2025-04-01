@@ -44,9 +44,13 @@
 - [DONE] Define a PassManager class that can run a sequence of passes.
 - [DONE] Define a new function like apply_single_pass_transforms, but keep applying patterns on edited / created ops.
 - [DONE] Add a new Pure tag op to allow applying CSE on ops. 
-- Create a new CSE Pass that remove unused and identical ops (don't handle blocks for now).
-- Add unit tests for CSE.
-- Create new library lir_ops that contain low level ops (similar to LLVM). Add constant / add, but don't redefine func ops for it.
+- [DONE] Create a new CSE Pass that remove unused and identical ops (don't handle blocks for now).
+- [DONE] Add unit tests for CSE.
+- [DONE] Update the builtin interface to use the same interface than the others.
+- [DONE] Write a Python / comment based generator for ops.
+- [DONE] Move verifiers to be generated automatically from the defs.
+- Automatically generate the clone method of BuiltinOp.
+- Create new library lir_ops that contain low level ops (similar to LLVM). Add iadd, but don't redefine func ops for it.
 - Create a new function, like apply_single_pass_transforms, called legalize_ir whose goal is to apply "transformrs" to legalize IR.
 - Create a new library, low_level_ir, with a new pass LegalizeToLowLevel, and a new tag LowLevelOp.
 - Mark all lir_ops with the tag

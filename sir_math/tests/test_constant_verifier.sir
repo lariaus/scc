@@ -14,11 +14,18 @@ function @const_f32() -> (f32) {
     return %0: f32
 }
 
-// CHECK: Error: Required attribute `val` must be a scalar attribute, but got "foo" 
-// CHECK-NEXT: %0 = "math.constant"() {"val" = "foo"} : () -> (f32)
+// CHECK: Error: Required attribute `value` must be a scalar attribute, but got "foo" 
+// CHECK-NEXT: %0 = "math.constant"() {"value" = "foo"} : () -> (f32)
 function @fail_constant_str() -> (f32) {
-    %0 = "math.constant"() {"val" = "foo"} : () -> (f32)
+    %0 = "math.constant"() {"value" = "foo"} : () -> (f32)
     return %0: f32
+}
+
+// CHECK: Error: Output #0 (result) must be a same type than value, but got si64
+// CHECK-NEXT: %0 = "math.constant"() {"value" = 4: si32} : () -> (si64)
+function @fail_constant_wrong_type() -> (si64) {
+    %0 = "math.constant"() {"value" = 4: si32} : () -> (si64)
+    return %0: si64
 }
 
 }
