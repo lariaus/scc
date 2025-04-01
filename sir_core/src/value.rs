@@ -101,6 +101,13 @@ impl<'a> IRPrintableObject for Value<'a> {
             }
         }
     }
+    fn initialize_context_on_root(&self, printer: &mut IRPrinter) {
+        if let Some(op) = self.defining_op() {
+            printer.initialize_context_with_root_op(op);
+        } else {
+            printer.initialize_context();
+        }
+    }
 }
 
 impl<'a> LocatableObject for Value<'a> {
@@ -113,7 +120,7 @@ impl<'a> LocatableObject for Value<'a> {
         let mut opts = IRPrinterOptions::new();
         opts.use_generic_form = true;
         let mut printer = IRPrinter::new_string_builder(opts);
-        printer.print(self).unwrap();
+        printer.print_root(self).unwrap();
         Some(printer.take_output_string().unwrap())
     }
 }

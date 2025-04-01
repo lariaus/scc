@@ -1,0 +1,25 @@
+// XTEST: sir-opt --legalize-to-low-level
+// XTEST-OUTPUT-CHECK
+
+module {
+
+// Lower math.iadd to lir.iadd
+// CHECK: function @add_i32(%arg0: i32, %arg1: i32) -> (i32)
+// CHECK-NEXT: %0 = lir.iadd %arg0, %arg1 : i32
+// CHECK-NEXT: return %0 : i32
+
+function @add_i32(%arg0: i32, %arg1: i32) -> (i32) {
+    %0 = math.iadd %arg0, %arg1 : i32
+    return %0 : i32
+}
+
+// Lower si32 to i32 and math.iadd to lir.iadd
+// CHECK: function @add_si32(%arg0: i32, %arg1: i32) -> (i32)
+// CHECK-NEXT: %0 = lir.iadd %arg0, %arg1 : i32
+// CHECK-NEXT: return %0 : i32
+function @add_si32(%arg0: si32, %arg1: si32) -> (si32) {
+    %0 = math.iadd %arg0, %arg1 : si32
+    return %0 : si32
+}
+
+}

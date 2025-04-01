@@ -1,9 +1,23 @@
-use sir_core::sir_opt_runner::SIROptRunner;
-use sir_func::func_ops::register_func_ops;
+use sir_core::{
+    compiler_setup::CompilerSetup, ir_context::IRContext, pass_manager::register_core_passes,
+    sir_opt_runner::SIROptRunner,
+};
+use sir_func::{func_ops::register_func_ops, func_transforms::register_func_transforms};
+use sir_low_level::register_low_level_passes;
 use xtest::{
     test_driver::{OutputTestWriter, TestDriver, TestRunner},
     test_file::TestConfig,
 };
+
+fn register_ops(ctx: &mut IRContext) {
+    register_func_ops(ctx);
+}
+
+fn setup_compiler(cs: &mut CompilerSetup) {
+    register_core_passes(cs);
+    register_low_level_passes(cs);
+    register_func_transforms(cs);
+}
 
 #[derive(Default)]
 struct SIROptTestRunner {}
@@ -22,7 +36,8 @@ impl TestRunner for SIROptTestRunner {
         runner.set_manually_pass_input_file(true);
         runner.set_input_path(cfg.path().to_owned());
 
-        runner.register_setup_ctx_callback(register_func_ops);
+        runner.register_setup_callback(setup_compiler);
+        runner.register_setup_ctx_callback(register_ops);
 
         let args = cfg.command()[1..].iter().map(|x| x.to_owned()).collect();
         runner.setup(args);
@@ -51,4 +66,9 @@ fn run_xtest(path: &str) {
 #[test]
 fn test_function_verifier() {
     run_xtest("test_function_verifier.sir");
+}
+
+#[test]
+fn test_conversion_func_to_lir() {
+    run_xtest("conversion/func_to_lir.sir");
 }

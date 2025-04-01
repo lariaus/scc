@@ -1,0 +1,15 @@
+// XTEST: sir-opt --legalize-to-low-level
+// XTEST-OUTPUT-CHECK
+
+module {
+
+
+// si32 type is lowered to i32
+// CHECK: function @return_input(%arg0: i32) -> (i32) 
+// CHECK-NEXT: return %arg0 : i32
+
+function @return_input(%arg0: si32) -> (si32) {
+    return %arg0 : si32
+}
+
+}

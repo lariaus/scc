@@ -55,6 +55,18 @@ impl IRVerifier {
         CompilerResult::make(self.diagnostics, Some(()))
     }
 
+    // Verify if a block is well formed. Return diagnostics if anything is wrong with it.
+    pub fn verify_block(mut self, block: Block) -> CompilerResult<()> {
+        // Prepare the values map first.
+        self.value_defs.open_scope();
+        self.value_defs.fill_with_predecessors_defs_block(block);
+
+        // Then run the verifier.
+        self._verify_block(block);
+
+        CompilerResult::make(self.diagnostics, Some(()))
+    }
+
     fn _call_verifier(&mut self, op: GenericOperation) {
         let mut diagnostics = DiagnosticsEmitter::new(&mut self.diagnostics, "IRVerifier");
         let interface = match op.get_builtin_op_interface() {
@@ -110,6 +122,14 @@ impl IRVerifier {
             None => false,
         };
 
+        if check_terminator && block.get_num_ops() == 0 {
+            emit_error(
+                self,
+                &block,
+                format!("A block must finish by a terminator op"),
+            );
+        }
+
         // Then check the ops.
         for (idx, op) in block.get_ops().enumerate() {
             let is_last = idx + 1 == block.get_num_ops();
@@ -158,6 +178,18 @@ pub fn verify_op_with_options(
     verifier.verify(op)
 }
 
+// Verify `block` and returns diagnostics.
+pub fn verify_bock(block: Block) -> CompilerResult<()> {
+    let verifier = IRVerifier::new(IRVerifierOptions::new());
+    verifier.verify_block(block)
+}
+
+// Verify `block` and returns diagnostics.
+pub fn verify_block_with_options(block: Block, options: IRVerifierOptions) -> CompilerResult<()> {
+    let verifier = IRVerifier::new(options);
+    verifier.verify_block(block)
+}
+
 // Helper functions to write op verifiers
 pub mod ir_checks {
     use diagnostics::diagnostics::{emit_error, DiagnosticsEmitter};
@@ -165,7 +197,8 @@ pub mod ir_checks {
     use crate::{
         attributes::{Attribute, AttributeSubClass, TypeAttr},
         ir_printer::IRPrintableObject,
-        operation::{GenericOperation, OperationImpl}, types::{Type, TypeSubClass},
+        operation::{GenericOperation, OperationImpl},
+        types::{Type, TypeSubClass},
     };
 
     pub fn verif<S: Into<String>>(
@@ -279,16 +312,12 @@ pub mod ir_checks {
     }
 
     // Verify if op has an attribute
-    pub fn verif_has_attr(
-        emitter: &mut DiagnosticsEmitter,
-        op: GenericOperation,
-        name: &str,
-    ) {
+    pub fn verif_has_attr(emitter: &mut DiagnosticsEmitter, op: GenericOperation, name: &str) {
         if op.get_attr(name).is_none() {
             emit_error(
-                    emitter,
-                    &op,
-                    format!("Missing required attribute `{}`", name),
+                emitter,
+                &op,
+                format!("Missing required attribute `{}`", name),
             );
         }
     }
@@ -347,7 +376,11 @@ pub mod ir_checks {
                 emit_error(
                     emitter,
                     &op,
-                    format!("Required attribute `{}` must be a TypedAttr of type {}", name, T::get_typename()),
+                    format!(
+                        "Required attribute `{}` must be a TypedAttr of type {}",
+                        name,
+                        T::get_typename()
+                    ),
                 );
                 return;
             }
@@ -356,7 +389,11 @@ pub mod ir_checks {
             emit_error(
                 emitter,
                 &op,
-                format!("Required attribute `{}` must be a TypedAttr of type {}", name, T::get_typename()),
+                format!(
+                    "Required attribute `{}` must be a TypedAttr of type {}",
+                    name,
+                    T::get_typename()
+                ),
             );
         }
     }
@@ -511,7 +548,7 @@ pub mod ir_checks {
         idx: usize,
         value_name: &str,
         predicate: Predicate,
-        value_label: &str
+        value_label: &str,
     ) {
         if is_input {
             verif_input_is_as(emitter, op, idx, value_name, predicate, value_label)
@@ -592,7 +629,7 @@ pub mod ir_checks {
 // @verif_code VerifCode
 
 // Define an attr that can be of any type.
-// @XGENDEF AnyAttr<Name> : AttrBase<Name, 
+// @XGENDEF AnyAttr<Name> : AttrBase<Name,
 //    {{ &'a Attribute }},
 //    {{ self.get_attr($attr_symbol).expect("Missing `##Name` attribute") }},
 //    {{ ir_checks::verif_has_attr(diagnostics, self.generic(), $attr_symbol); }}
@@ -609,7 +646,7 @@ pub mod ir_checks {
 
 // Define an attr that must be a TypedAttr of type Type
 // Define an attr that must be a FunctionType.
-// @XGENDEF TypedAttrOfType<Name, Type> : AttrBase<Name, 
+// @XGENDEF TypedAttrOfType<Name, Type> : AttrBase<Name,
 //    {{ &'a ##Type }},
 //    {{ self.get_attr($attr_symbol).expect("Missing `##Name` attribute").cast::<TypeAttr>().expect("`##Name` attribute must be a Type").val().cast::<##Type>().expect("`##Name` type attribute must be a ##Type") }},
 //    {{ ir_checks::verif_has_type_attr_of_type::<##Type>(diagnostics, self.generic(), $attr_symbol); }}
@@ -630,3 +667,4 @@ pub mod ir_checks {
 // Define an attr that represent a scalar number.
 // @XGENDEF ScalarAttr<Name> : AttrWithPred<Name, PredIsScalarAttr, "scalar attribute">
 
+// Add more defs ...

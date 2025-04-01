@@ -204,6 +204,20 @@ impl<'a> IRBuilder<'a> {
         Block::make(&self.ctx, self.ctx.get_block_data(block))
     }
 
+    // Splice the content of block at `pos`, leaving `block` empty
+    pub fn splice_block_at(&mut self, block: BlockID, pos: InsertionPoint, replace_args: bool) {
+        match pos {
+            InsertionPoint::Detached => panic!("Invalid position"),
+            InsertionPoint::BeforeOp(_pos) => todo!(),
+            InsertionPoint::AfterOp(_pos) => todo!(),
+            InsertionPoint::AtBeginOf(_pos) => todo!(),
+            InsertionPoint::AtEndOf(pos) => {
+                self.ctx
+                    ._splice_block_content_at_end_of_block(block, pos, replace_args)
+            }
+        }
+    }
+
     // Get the generic operation from the uid.
     pub fn get_operation(&self, uid: OperationID) -> GenericOperation {
         self.ctx.get_generic_operation(uid)
@@ -245,6 +259,13 @@ impl<'a, T: OperationImpl<'a>> OpBuilderState<'a, T> {
     pub fn make() -> Self {
         let mut res = Self::new();
         res.set_op_type_uid(T::get_op_type_uid());
+        res
+    }
+
+    // Create a builder for an operation of type `uid`.
+    pub fn make_with_type_uid(uid: OperationTypeUID) -> Self {
+        let mut res = Self::new();
+        res.set_op_type_uid(uid);
         res
     }
 

@@ -1,10 +1,14 @@
+use iostreams::location::Location;
+
 use crate::{
     block::Block,
-    ir_builder::IRBuilder,
+    ir_builder::{IRBuilder, InsertionPoint, OpBuilderState},
     ir_context::IRContext,
     ir_data::{BlockID, OperationID, ValueID},
     ir_printer::IRPrintableObject,
     operation::{GenericOperation, OperationImpl},
+    type_converter::TypeConverter,
+    types::Type,
 };
 
 // Options for the rewriter.
@@ -51,6 +55,7 @@ pub struct IRRewriter<'a> {
     opts: IRRewriterOptions,
     updating_op: Option<OperationID>,
     updating_changes: Option<IRRewriteChanges>,
+    type_converter: Option<Box<dyn TypeConverter>>,
 }
 
 impl<'a> IRRewriter<'a> {
@@ -61,12 +66,24 @@ impl<'a> IRRewriter<'a> {
             opts,
             updating_op: None,
             updating_changes: None,
+            type_converter: None,
         }
     }
 
     /// Returns true if the debug_mode is enabled.
     pub fn debug_mode(&mut self) -> bool {
         self.opts.debug_mode
+    }
+
+    /// Assign a type converter to the rewriter.
+    pub fn set_type_converter<T: TypeConverter + 'static>(&mut self, type_converter: T) {
+        assert!(self.type_converter.is_none());
+        self.type_converter = Some(Box::new(type_converter));
+    }
+
+    /// Returns the type converter, or None if the rewriter doesn't have one.
+    pub fn type_converter(&self) -> Option<&dyn TypeConverter> {
+        self.type_converter.as_ref().map(|x| &**x)
     }
 
     /// Set the op which is currently being updated by the rewriter.
@@ -78,6 +95,8 @@ impl<'a> IRRewriter<'a> {
                 created_ops: Vec::new(),
                 op_change: None,
             });
+            self.builder
+                .set_insertion_point(InsertionPoint::BeforeOp(op));
         } else {
             self.updating_op = None;
             self.updating_changes = None;
@@ -211,11 +230,11 @@ impl<'a> IRRewriter<'a> {
 
         // Get the new outputs.
         let new_values: Vec<ValueID> = self
-        .ctx()
-        .get_generic_operation(new_op)
-        .get_outputs()
-        .map(|v| v.as_id())
-        .collect();
+            .ctx()
+            .get_generic_operation(new_op)
+            .get_outputs()
+            .map(|v| v.as_id())
+            .collect();
 
         assert_eq!(
             old_values.len(),
@@ -225,9 +244,9 @@ impl<'a> IRRewriter<'a> {
 
         if self.debug_mode() {
             eprintln!(
-                    "IRRewriter: replace op `{}` with `{}`",
-                    self.ctx().get_generic_operation(op).to_string_repr(),
-                    self.ctx().get_generic_operation(new_op).to_string_repr(),
+                "IRRewriter: replace op `{}` with `{}`",
+                self.ctx().get_generic_operation(op).to_string_repr(),
+                self.ctx().get_generic_operation(new_op).to_string_repr(),
             );
         }
 
@@ -250,5 +269,39 @@ impl<'a> IRRewriter<'a> {
             assert!(changes.op_change.is_none(), "op already remplaced");
             changes.op_change = Some(OpChange::ReplacedWithOp(new_op));
         }
+    }
+
+    // Create an operation and insert it at the current insertion point
+    pub fn create_op<'b, T: OperationImpl<'b>>(
+        &'b mut self,
+        loc: Location,
+        b: OpBuilderState<'b, T>,
+    ) -> T {
+        let res = self.builder.create_op(loc, b);
+        if let Some(changes) = &mut self.updating_changes {
+            changes.created_ops.push(res.as_id());
+        }
+        res
+    }
+
+    // Create a detached block.
+    pub fn create_block<T: Into<Vec<Type>>>(&mut self, loc: Location, operands_types: T) -> Block {
+        self.builder.create_block(loc, operands_types)
+    }
+
+    // Create a block right at the end of the blocks list of `pos`.
+    pub fn create_block_at_end_of<T: Into<Vec<Type>>>(
+        &mut self,
+        pos: OperationID,
+        loc: Location,
+        operands_types: T,
+    ) -> Block {
+        self.builder
+            .create_block_at_end_of(pos, loc, operands_types)
+    }
+
+    // Splice the content of block at `pos`, leaving `block` empty
+    pub fn splice_block_at(&mut self, block: BlockID, pos: InsertionPoint, replace_args: bool) {
+        self.builder.splice_block_at(block, pos, replace_args)
     }
 }

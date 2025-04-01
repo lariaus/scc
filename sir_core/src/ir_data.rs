@@ -244,6 +244,20 @@ impl BlockData {
     pub(crate) fn set_parent(&mut self, parent: Option<OperationID>) {
         self.parent = parent;
     }
+
+    // Take all ops inside the block, leaving it empty.
+    pub(crate) fn take_ops(&mut self) -> Vec<OperationID> {
+        let mut empty = Vec::new();
+        std::mem::swap(&mut self.ops, &mut empty);
+        empty
+    }
+
+    // Take all args of the block, leaving it with an empty list of arguments.
+    pub(crate) fn take_args(&mut self) -> Vec<ValueID> {
+        let mut empty = Vec::new();
+        std::mem::swap(&mut self.args, &mut empty);
+        empty
+    }
 }
 
 // Unique identifier for a block.

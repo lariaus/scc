@@ -318,13 +318,17 @@ impl SIROptRunner {
         if let Some(output_path) = &self.output_path {
             let file = File::open(output_path).expect("Failed to open the output file");
             let mut printer = IRPrinter::new(printer_opts, Box::new(file));
-            printer.print(&ctx.get_generic_operation(root_op)).unwrap();
+            printer
+                .print_root(&ctx.get_generic_operation(root_op))
+                .unwrap();
             write!(printer.os(), "\n").unwrap();
         } else {
             // Print to stdout.
             // TODO: Fix printer.
             let mut printer = IRPrinter::new_string_builder(printer_opts);
-            printer.print(&ctx.get_generic_operation(root_op)).unwrap();
+            printer
+                .print_root(&ctx.get_generic_operation(root_op))
+                .unwrap();
             write!(os, "{}\n", printer.take_output_string().unwrap()).unwrap();
         }
 

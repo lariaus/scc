@@ -7,6 +7,8 @@ members = [
     "scc",
     "sir_core",
     "sir_func",
+    "sir_lir",
+    "sir_low_level",
     "sir_math",
     "sir-opt",
     "parse",

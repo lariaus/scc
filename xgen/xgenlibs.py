@@ -79,6 +79,18 @@ class StringParser:
 
         return UnresolvedValue(self.fpath, self.lidx,
                                def_id, params)
+    
+    # '[' <value>* ']'
+    def read_array(self):
+        arr = []
+        self.read_str("[")
+        if not self.startswith(']'):
+            while True:
+                arr.append(self.read_value())
+                if not self.startswith(','): break
+                self.read_str(',')
+        self.read_str(']')
+        return arr
 
 
     def read_value(self):
@@ -95,6 +107,9 @@ class StringParser:
         if self.startswith('false'):
             self.data = self.data[len('false'):].strip()
             return False
+        
+        if self.startswith('['):
+            return self.read_array()
         
         if len(self.data) > 0 and self.data[0].isalpha():
             return self.read_def_ref()

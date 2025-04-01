@@ -205,7 +205,6 @@ impl CSEPass {
         rewriter: &mut IRRewriter,
         block_id: BlockID,
     ) {
-
         if self.debug_mode {
             let block = rewriter.get_block(block_id);
             eprintln!("Block before CSE:\n{}", block.to_string_repr());
@@ -213,7 +212,6 @@ impl CSEPass {
 
         // Keep applying until convergence
         loop {
-
             let mut ops_map = OperationHashSet::new(hash_operation, check_operation_eq);
             let mut ops_to_erase = Vec::new();
             let mut ops_to_replace = Vec::new();

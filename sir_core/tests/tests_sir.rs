@@ -1,4 +1,7 @@
-use sir_core::{compiler_setup::CompilerSetup, ir_context::IRContext, pass_manager::register_core_passes, sir_opt_runner::SIROptRunner};
+use sir_core::{
+    compiler_setup::CompilerSetup, ir_context::IRContext, pass_manager::register_core_passes,
+    sir_opt_runner::SIROptRunner,
+};
 use test_ops::register_test_ops;
 use xtest::{
     test_driver::{OutputTestWriter, TestDriver, TestRunner},

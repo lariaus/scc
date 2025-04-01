@@ -25,7 +25,10 @@ fn test_fun_op() {
     register_test_ops(&mut ctx);
     let mut b = IRBuilder::new(&mut ctx);
 
-    let fun_ty = FunctionType::new(vec![val_ty.clone(), val_ty.clone(), val_ty.clone()], vec![]);
+    let fun_ty = FunctionType::new(
+        vec![val_ty.clone(), val_ty.clone(), val_ty.clone()],
+        vec![val_ty.clone()],
+    );
     let fun_op = b.create_op(loc, TestFunOp::_build("foo", fun_ty)).as_id();
     let block = b.create_block_at_begin_of(
         fun_op,
@@ -56,8 +59,8 @@ fn test_fun_op() {
     assert_eq!(add0.get_rhs().as_id(), y);
 
     let fun_op = ctx.get_generic_operation(fun_op);
-    assert_eq!(fun_op.to_generic_form_string_repr(), "\"test.fun\"() {\"symbol_name\" = \"foo\", \"function_type\" = function<(i32, i32, i32) -> ()>} : () -> () {\n    ^(%arg0: i32, %arg1: i32, %arg2: i32) {\n        %0 = \"test.add\"(%arg0, %arg1) : (i32, i32) -> (i32)\n        %1 = \"test.add\"(%0, %arg2) : (i32, i32) -> (i32)\n        \"test.return\"(%1) : (i32) -> ()\n    }\n    \n}");
-    assert_eq!(fun_op.to_string_repr(), "test.fun @foo(%arg0: i32, %arg1: i32, %arg2: i32) {\n    %0 = test.add %arg0, %arg1 : i32\n    %1 = test.add %0, %arg2 : i32\n    test.return %1 : i32\n}");
+    assert_eq!(fun_op.to_generic_form_string_repr(), "\"test.fun\"() {\"symbol_name\" = \"foo\", \"function_type\" = function<(i32, i32, i32) -> (i32)>} : () -> () {\n    ^(%arg0: i32, %arg1: i32, %arg2: i32) {\n        %0 = \"test.add\"(%arg0, %arg1) : (i32, i32) -> (i32)\n        %1 = \"test.add\"(%0, %arg2) : (i32, i32) -> (i32)\n        \"test.return\"(%1) : (i32) -> ()\n    }\n    \n}");
+    assert_eq!(fun_op.to_string_repr(), "test.fun @foo(%arg0: i32, %arg1: i32, %arg2: i32) -> (i32) {\n    %0 = test.add %arg0, %arg1 : i32\n    %1 = test.add %0, %arg2 : i32\n    test.return %1 : i32\n}");
 
     // assert_eq!(3, 5);
 }
@@ -67,13 +70,13 @@ fn test_fun_op_parser() {
     let mut ctx = IRContext::new();
     register_test_ops(&mut ctx);
     let op = OperationID::from_string_repr_with_context(
-        "test.fun @foo(%arg0: i32, %arg1: i32, %arg2: i32) {\n    %0 = test.add %arg0, %arg1 : i32\n    %1 = test.add %0, %arg2 : i32\n    test.return %1 : i32\n}".to_string(),
+        "test.fun @foo(%arg0: i32, %arg1: i32, %arg2: i32) -> (i32) {\n    %0 = test.add %arg0, %arg1 : i32\n    %1 = test.add %0, %arg2 : i32\n    test.return %1 : i32\n}".to_string(),
         &mut ctx,
     );
     let fun_op = ctx.get_generic_operation(op).cast::<TestFunOp>().unwrap();
 
-    assert_eq!(fun_op.to_generic_form_string_repr(), "\"test.fun\"() {\"symbol_name\" = \"foo\", \"function_type\" = function<(i32, i32, i32) -> ()>} : () -> () {\n    ^(%arg0: i32, %arg1: i32, %arg2: i32) {\n        %0 = \"test.add\"(%arg0, %arg1) : (i32, i32) -> (i32)\n        %1 = \"test.add\"(%0, %arg2) : (i32, i32) -> (i32)\n        \"test.return\"(%1) : (i32) -> ()\n    }\n    \n}");
-    assert_eq!(fun_op.to_string_repr(), "test.fun @foo(%arg0: i32, %arg1: i32, %arg2: i32) {\n    %0 = test.add %arg0, %arg1 : i32\n    %1 = test.add %0, %arg2 : i32\n    test.return %1 : i32\n}");
+    assert_eq!(fun_op.to_generic_form_string_repr(), "\"test.fun\"() {\"symbol_name\" = \"foo\", \"function_type\" = function<(i32, i32, i32) -> (i32)>} : () -> () {\n    ^(%arg0: i32, %arg1: i32, %arg2: i32) {\n        %0 = \"test.add\"(%arg0, %arg1) : (i32, i32) -> (i32)\n        %1 = \"test.add\"(%0, %arg2) : (i32, i32) -> (i32)\n        \"test.return\"(%1) : (i32) -> ()\n    }\n    \n}");
+    assert_eq!(fun_op.to_string_repr(), "test.fun @foo(%arg0: i32, %arg1: i32, %arg2: i32) -> (i32) {\n    %0 = test.add %arg0, %arg1 : i32\n    %1 = test.add %0, %arg2 : i32\n    test.return %1 : i32\n}");
 
     // assert_eq!(3, 5);
 }

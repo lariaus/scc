@@ -39,10 +39,15 @@ Define all basic systems behind the IR / Context.
 Part of the SIR library.
 Define Function related ops.
 
+### sir_lir
+
+Part of the SIR Library.
+LIR Or Low IR defines Low Level operations.
+
 ### sir_math
 
-Not done yet.
-Define all mathematic ops.
+Part of the SIR Library.
+Define mathematic-like ops.
 
 ### sir-opt (binary)
 
@@ -65,3 +70,9 @@ Then special hooks for SIR transform those JSON representation into actual rust 
 
 Helper library to write unit tests.
 This is inspired from LLVM FileCheck tool, but integrated directly with the rust testing system.
+
+## Experiments / Tests
+
+### Generate LLVM IR from C
+
+clang -O3 tests/test_add.c -S -emit-llvm -o tests/out.ll && cat tests/out.ll

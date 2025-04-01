@@ -49,14 +49,18 @@
 - [DONE] Update the builtin interface to use the same interface than the others.
 - [DONE] Write a Python / comment based generator for ops.
 - [DONE] Move verifiers to be generated automatically from the defs.
-- Automatically generate the clone method of BuiltinOp.
-- Create new library lir_ops that contain low level ops (similar to LLVM). Add iadd, but don't redefine func ops for it.
-- Create a new function, like apply_single_pass_transforms, called legalize_ir whose goal is to apply "transformrs" to legalize IR.
-- Create a new library, low_level_ir, with a new pass LegalizeToLowLevel, and a new tag LowLevelOp.
-- Mark all lir_ops with the tag
-- Create a new Interface ConditionallyLowLevelOp with a function to check wether a function is LowLevel or not.
-- The LegalizeToLowLevel checks and apply transforms on all ops that are not LowLevel.
-- Add transforms to legalize math ops to lir_ops.
+- [DONE] Automatically generate the clone method of BuiltinOp.
+- [DONE] Create new library sir_lir that contain low level ops (similar to LLVM). Add iadd, but don't redefine func ops for it.
+- [DONE] Fix IRPrinter to correctly support printing part of the IR, and using the generic form if verification fails. 
+- [DONE] Create a new function, like apply_single_pass_transforms, called legalize_ir whose goal is to apply "transforms" to legalize IR.
+- [DONE] Create a new library, low_level_ir, with a new pass LegalizeToLowLevel, and a new tag LowLevelOp.
+- [DONE] Mark all lir_ops with the tag
+- [DONE] Create a new Interface ConditionallyLowLevelOp with a function to check wether a function is LowLevel or not.
+- [DONE] The LegalizeToLowLevel checks and apply transforms on all ops that are not LowLevel.
+- [DONE] Add transforms to legalize function op to LowLevel.
+- [DONE] Add transforms to legalize math ops to lir_ops.
+- [DONE] Add legalization unit test for function op (return si32 operand) 
+- [DONE] Add legalization unit test for math (si32 add op).
 - ...
 
 #### P1 Features #####
@@ -83,3 +87,6 @@ Divide IRContent between IR Nodes and Op Infos:
 - @TODO[I2][SIR-CORE]: Support using stdin for input of SIROptRunner.
 
 - @TODO[B3][SIR-CORE]: GreedyIRTRansformer applying transforms every time an op change might lead to infinite loop. We need a limit to stop this.
+
+- @TODO[I4][SIR-CORE]: Deleting ops in order won't work if the block is in an invalid state.
+    Instead we should delete all ops at once and update the users if they are not in this block.

@@ -89,8 +89,7 @@ class OpDefInfos:
             self.mods = [ModDefInfos(x) for x in raw_data["mod"]]
 
         if "tags" in raw_data:
-            tags_data = raw_data["tags"]
-            self.tags = tags_data.split()
+            self.tags = raw_data["tags"]
 
         builtin_interface = self.defs.find_def("BuiltinOp").resolve(self.defs)
         assert isinstance(builtin_interface, InterfaceDefInfos)
@@ -198,6 +197,7 @@ class OpDefInfos:
         # Generate some extra functions.
         ofs.write("impl<'a> {}<'a> {{\n".format(self.class_name))
         self._gen_verify_fun(ofs)
+        self._gen_builtin_clone_fun(ofs)
         ofs.write('}\n\n')
 
         # Generate the register for the op.
@@ -274,6 +274,11 @@ class OpDefInfos:
         if self.has_custom_verifier:
             ofs.write("        self.verify_op(diagnostics)\n")
 
+        ofs.write("    }\n")
+
+    def _gen_builtin_clone_fun(self, ofs):
+        ofs.write("    pub fn clone() -> BuiltinOpInterfaceImplWrapper {\n")
+        ofs.write("        BuiltinOpInterfaceImplWrapper::new(Box::new({}BuiltinOpInterfaceImpl))\n".format(self.class_name))
         ofs.write("    }\n")
 
     def _apply_mod(self, mod):
@@ -660,7 +665,7 @@ impl<'a> OperationImpl<'a> for {class_name}<'a> {{
         &self.ctx
     }}
 
-    fn get_op_type_uid() -> crate::operation_type::OperationTypeUID {{
+    fn get_op_type_uid() -> OperationTypeUID {{
         panic!("Cannot get the TypeUID of an InterfaceOp")
     }}
 }}

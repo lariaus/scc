@@ -131,6 +131,14 @@ impl IRContext {
         uid
     }
 
+    // Get a Operationdata ref from a OperationID.
+    pub fn get_op_data(&self, uid: OperationID) -> &OperationData {
+        match self._data_ops.get(&uid) {
+            Some(op) => op,
+            None => panic!("Invalid op id {:?}", uid),
+        }
+    }
+
     // Get a ValueData ref from a ValueID.
     pub fn get_value_data(&self, uid: ValueID) -> &ValueData {
         match self._data_vals.get(&uid) {
@@ -401,14 +409,8 @@ impl IRContext {
     fn _erase_empty_op(&mut self, op: OperationID) {
         let op_data = self.get_operation_data(op);
         assert!(op_data.parent().is_none(), "parent must be none");
-        for out_val in op_data.outputs() {
-            assert!(
-                self.get_value_data(*out_val).users().is_empty(),
-                "op must not have any use"
-            );
-        }
-
         assert!(op_data.blocks().is_empty(), "op must not have any block");
+        let outputs: Vec<ValueID> = op_data.outputs().iter().map(|x| *x).collect();
 
         // Remove from the users of the operands.
         // Use a set as an op might have the same operand multiple times.
@@ -416,6 +418,15 @@ impl IRContext {
         for val in &operands {
             let val = self.get_value_data_mut(*val);
             val.erase_user(op);
+        }
+
+        // Delete all outputs of the op.
+        for out_val in outputs {
+            assert!(
+                self.get_value_data(out_val).users().is_empty(),
+                "op output must not have any use"
+            );
+            self._data_vals.remove(&out_val);
         }
 
         // Then finally delete the op
@@ -427,8 +438,87 @@ impl IRContext {
     pub(crate) fn erase_op(&mut self, op: OperationID) {
         self.detach_op_from_ir(op);
 
-        // TODO: handle recursively deleting blocks.
+        // Delete all blocks recursively.
+        let blocks: Vec<BlockID> = self.get_op_data(op).blocks().iter().map(|x| *x).collect();
+        for block in blocks {
+            self.erase_block(block);
+        }
 
         self._erase_empty_op(op);
+    }
+
+    // Completely erase the block from the IR and the context.
+    pub(crate) fn erase_block(&mut self, block: BlockID) {
+        // Detach it from the ir
+        self.detach_block_from_ir(block);
+
+        // Detach and delete all children of the block from the IR.
+        // @TODO[I4][SIR-CORE]: Deleting ops in order won't work if the block is in an invalid state.
+        let ops = self.get_block_data_mut(block).take_ops();
+        for op in ops {
+            self.get_op_data_mut(op).set_parent(None);
+            self.erase_op(op);
+        }
+
+        // Now delete all operands of the block.
+        let operands: Vec<ValueID> = self.get_block_data_mut(block).take_args();
+        for block_arg in operands {
+            assert!(
+                self.get_value_data(block_arg).users().is_empty(),
+                "block operand must not have any use"
+            );
+            self._data_vals.remove(&block_arg);
+        }
+
+        // Then finally delete the block.
+        self._data_blocks.remove(&block);
+    }
+
+    // Move all ops of `block` at the end of `new_block`.
+    // If `replace_args` if true, all uses of arguments of blocks are replaced with the arguments of new_block.
+    // After the operation `block` will be empty
+    pub(crate) fn _splice_block_content_at_end_of_block(
+        &mut self,
+        block: BlockID,
+        new_block: BlockID,
+        replace_args: bool,
+    ) {
+        assert!(block != new_block);
+
+        // Empty `block`.
+        let mut ops = self.get_block_data_mut(block).take_ops();
+
+        // Update the parent block for all ops.
+        for op in &ops {
+            self.get_op_data_mut(*op).set_parent(Some(new_block));
+        }
+
+        // Then add it to the list.
+        self.get_block_data_mut(new_block)
+            .ops_mut()
+            .append(&mut ops);
+
+        if replace_args {
+            let old_args: Vec<ValueID> = self
+                .get_block_data(block)
+                .args()
+                .iter()
+                .map(|x| *x)
+                .collect();
+            let new_args: Vec<ValueID> = self
+                .get_block_data(new_block)
+                .args()
+                .iter()
+                .map(|x| *x)
+                .collect();
+            assert_eq!(
+                old_args.len(),
+                new_args.len(),
+                "Both blocks must have the same number of arguments"
+            );
+            for (old_arg, new_arg) in old_args.into_iter().zip(new_args) {
+                self.replace_all_uses_of_value(old_arg, new_arg);
+            }
+        }
     }
 }

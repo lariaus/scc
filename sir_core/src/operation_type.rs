@@ -4,7 +4,8 @@ use const_fnv1a_hash::fnv1a_hash_str_64;
 
 use crate::{
     op_interfaces::{
-        BuiltinOpInterfaceImpl, BuiltinOpInterfaceImplWrapper, OpInterfaceBuilder, OpInterfaceUID, OpInterfaceWrapper
+        BuiltinOpInterfaceImpl, BuiltinOpInterfaceImplWrapper, OpInterfaceBuilder, OpInterfaceUID,
+        OpInterfaceWrapper,
     },
     op_tags::OperationTag,
     operation::OperationImpl,

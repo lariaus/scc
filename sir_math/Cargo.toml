@@ -7,7 +7,9 @@ edition = "2021"
 diagnostics = { path = "../diagnostics" }
 iostreams = { path = "../iostreams" }
 parse = { path = "../parse" }
+sir_low_level = { path = "../sir_low_level" }
 sir_core = { path = "../sir_core" }
+sir_lir = { path = "../sir_lir" }
 
 [dev-dependencies]
 sir_func = { path = "../sir_func" }

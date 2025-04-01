@@ -18,5 +18,6 @@ pub mod operation;
 pub mod operation_type;
 pub mod pass_manager;
 pub mod sir_opt_runner;
+pub mod type_converter;
 pub mod types;
 pub mod value;

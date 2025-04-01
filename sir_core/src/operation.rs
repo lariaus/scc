@@ -5,6 +5,7 @@ use parse::{lexer::TokenValue, parser::Parser};
 use crate::{
     attributes::{Attribute, DictAttr},
     block::Block,
+    ir_builder::OpImplBuilderState,
     ir_context::IRContext,
     ir_data::{BlockID, OperationData, OperationID, ValueID},
     ir_parser::{IRParsableObject, IRParsableObjectWithContext, IRParser, OperationParserState},
@@ -92,7 +93,11 @@ pub trait OperationImpl<'a> {
     // Returns the BuiltinOp interface implementation of the op. (or None is the op isn't registered).
     fn get_builtin_op_interface(&self) -> Option<BuiltinOp<'a>> {
         let wrapper = self.get_op_type_infos()?.builtin_interface();
-        Some(BuiltinOp::get_from_builtin_interface(wrapper, self.get_context(), self.get_op_data()))
+        Some(BuiltinOp::get_from_builtin_interface(
+            wrapper,
+            self.get_context(),
+            self.get_op_data(),
+        ))
     }
 
     // Returns true if the op has the tag.
@@ -124,7 +129,7 @@ pub trait OperationImpl<'a> {
     }
 
     // Returns an iterator for the inputs.
-    fn get_inputs(&self) -> impl Iterator<Item = Value<'a>> {
+    fn get_inputs(&self) -> impl DoubleEndedIterator<Item = Value<'a>> {
         let ctx = self.get_context();
         self.get_op_data()
             .inputs()
@@ -132,8 +137,13 @@ pub trait OperationImpl<'a> {
             .map(|uid| Value::make(ctx, ctx.get_value_data(*uid)))
     }
 
+    // Returns the list of ValueID for the inputs.
+    fn get_inputs_ids(&self) -> &'a [ValueID] {
+        self.get_op_data().inputs()
+    }
+
     // Returns an iterator for the outputs types.
-    fn get_inputs_types(&self) -> impl Iterator<Item = &'a Type> {
+    fn get_inputs_types(&self) -> impl DoubleEndedIterator<Item = &'a Type> {
         self.get_inputs().map(|v| v.get_type())
     }
 
@@ -152,7 +162,7 @@ pub trait OperationImpl<'a> {
     }
 
     // Returns an iterator for the outputs.
-    fn get_outputs(&self) -> impl Iterator<Item = Value<'a>> {
+    fn get_outputs(&self) -> impl DoubleEndedIterator<Item = Value<'a>> {
         let ctx = self.get_context();
         self.get_op_data()
             .outputs()
@@ -161,7 +171,7 @@ pub trait OperationImpl<'a> {
     }
 
     // Returns an iterator for the outputs types.
-    fn get_outputs_types(&self) -> impl Iterator<Item = &'a Type> {
+    fn get_outputs_types(&self) -> impl DoubleEndedIterator<Item = &'a Type> {
         self.get_outputs().map(|v| v.get_type())
     }
 
@@ -189,7 +199,7 @@ pub trait OperationImpl<'a> {
     }
 
     // Returns an iterator over all blocks of the op.
-    fn get_blocks(&self) -> impl Iterator<Item = Block<'a>> {
+    fn get_blocks(&self) -> impl DoubleEndedIterator<Item = Block<'a>> {
         let ctx = self.get_context();
         self.get_op_data()
             .blocks()
@@ -282,7 +292,7 @@ impl<'a> GenericOperation<'a> {
     }
 
     // Returns if the op is of type `T`
-    pub fn isa<T: OperationImpl<'a>>(&self) -> bool {
+    pub fn isa<'b, T: OperationImpl<'b>>(&self) -> bool {
         // We can always cast GenericOperation to GenericOperation.
         if T::is_generic_op() {
             return true;
@@ -301,6 +311,28 @@ impl<'a> GenericOperation<'a> {
         } else {
             None
         }
+    }
+}
+
+impl GenericOperation<'_> {
+    pub fn build<
+        InputsValues: Into<Vec<ValueID>>,
+        OutputsTypes: Into<Vec<Type>>,
+        Attrs: Into<DictAttr>,
+        Blocks: Into<Vec<BlockID>>,
+    >(
+        op_type_uid: OperationTypeUID,
+        inputs: InputsValues,
+        outputs_types: OutputsTypes,
+        attrs_dict: Attrs,
+        blocks: Blocks,
+    ) -> OpImplBuilderState<Self> {
+        let mut st = OpImplBuilderState::make_with_type_uid(op_type_uid);
+        st.set_inputs(inputs);
+        st.set_outputs_types(outputs_types);
+        st.set_attrs_dict(attrs_dict);
+        st.set_blocks(blocks);
+        st
     }
 }
 
@@ -342,7 +374,7 @@ impl<'a> LocatableObject for GenericOperation<'a> {
         let mut opts = IRPrinterOptions::new();
         opts.use_generic_form = true;
         let mut printer = IRPrinter::new_string_builder(opts);
-        printer.print(self).unwrap();
+        printer.print_root(self).unwrap();
         Some(printer.take_output_string().unwrap())
     }
 }
@@ -351,7 +383,6 @@ impl<'a> LocatableObject for GenericOperation<'a> {
 impl<'b, T: OperationImpl<'b>> IRPrintableObject for T {
     fn print(&self, printer: &mut IRPrinter) -> Result<(), std::io::Error> {
         let generic_op = GenericOperation::make_from_data(self.get_context(), self.get_op_data());
-        printer.setup_ir_infos(generic_op);
 
         if printer.always_use_generic_form() {
             return printer.print_op_generic_form_impl(generic_op);
@@ -364,6 +395,10 @@ impl<'b, T: OperationImpl<'b>> IRPrintableObject for T {
         };
 
         builtin_interface.custom_print(printer)
+    }
+
+    fn initialize_context_on_root(&self, printer: &mut IRPrinter) {
+        printer.initialize_context_with_root_op(self.generic());
     }
 }
 

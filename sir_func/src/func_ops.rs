@@ -3,7 +3,30 @@ use iostreams::location::Location;
 use parse::lexer::TokenValue;
 use parse::parser::Parser;
 use sir_core::{
-    attributes::{Attribute, StringAttr, TypeAttr}, block::Block, ir_builder::OpImplBuilderState, ir_context::IRContext, ir_data::{OperationData, ValueID}, ir_parser::{BlockParserState, IRParsableObject, IRParser, OperationParserState}, ir_printer::{IRPrintableObject, IRPrinter}, ir_verifier::ir_checks, op_interfaces::{BuiltinOp, BuiltinOpInterfaceImpl, BuiltinOpInterfaceImplWrapper, OpInterfaceBuilder, OpInterfaceWrapper}, op_tags::{TAG_DECLS_BLOCK_OP, TAG_TERMINATOR_OP}, operation::{GenericOperation, OperationImpl}, operation_type::{OperationTypeBuilder, OperationTypeUID}, types::{FunctionType, Type}
+    attributes::{Attribute, StringAttr, TypeAttr},
+    block::Block,
+    ir_builder::OpImplBuilderState,
+    ir_context::IRContext,
+    ir_data::{OperationData, ValueID},
+    ir_parser::{BlockParserState, IRParsableObject, IRParser, OperationParserState},
+    ir_printer::{IRPrintableObject, IRPrinter},
+    ir_verifier::ir_checks,
+    op_interfaces::{
+        BuiltinOp, BuiltinOpInterfaceImpl, BuiltinOpInterfaceImplWrapper, OpInterfaceBuilder,
+        OpInterfaceWrapper,
+    },
+    op_tags::{TAG_DECLS_BLOCK_OP, TAG_TERMINATOR_OP},
+    operation::{GenericOperation, OperationImpl},
+    operation_type::{OperationTypeBuilder, OperationTypeUID},
+    types::{FunctionType, Type},
+};
+use sir_low_level::{
+    interfaces::{
+        ConditionallyLowLevelOp, ConditionallyLowLevelOpInterfaceImpl,
+        ConditionallyLowLevelOpInterfaceImplWrapper,
+    },
+    low_level_types,
+    tags::TAG_LOW_LEVEL_OP,
 };
 
 /////////////////////////////////////////////////////////////////////////
@@ -12,7 +35,7 @@ use sir_core::{
 
 // @XGENDEF:SIROp ModuleOp
 // @opname "module"
-// @tags "TAG_DECLS_BLOCK_OP"
+// @tags ["TAG_DECLS_BLOCK_OP", "TAG_LOW_LEVEL_OP"]
 // @+block "body"
 // @custom_print_parse
 
@@ -47,11 +70,9 @@ impl<'a> OperationImpl<'a> for ModuleOp<'a> {
 }
 
 impl<'a> ModuleOp<'a> {
-
     pub fn get_body(&self) -> Block<'a> {
         self.get_block(0)
     }
-
 }
 
 // Wrapper struct for the BuiltinOp interface implementation.
@@ -59,20 +80,40 @@ impl<'a> ModuleOp<'a> {
 pub struct ModuleOpBuiltinOpInterfaceImpl;
 
 impl BuiltinOpInterfaceImpl for ModuleOpBuiltinOpInterfaceImpl {
-    fn verify<'a>(&self, ctx: &'a IRContext, data: &'a OperationData, diagnostics: &mut DiagnosticsEmitter) {
-        GenericOperation::make_from_data(ctx, data).cast::<ModuleOp>().unwrap().verify(diagnostics)
+    fn verify<'a>(
+        &self,
+        ctx: &'a IRContext,
+        data: &'a OperationData,
+        diagnostics: &mut DiagnosticsEmitter,
+    ) {
+        GenericOperation::make_from_data(ctx, data)
+            .cast::<ModuleOp>()
+            .unwrap()
+            .verify(diagnostics)
     }
-    fn custom_print<'a>(&self, ctx: &'a IRContext, data: &'a OperationData, printer: &mut IRPrinter) -> Result<(), std::io::Error> {
-        GenericOperation::make_from_data(ctx, data).cast::<ModuleOp>().unwrap().custom_print(printer)
+    fn custom_print<'a>(
+        &self,
+        ctx: &'a IRContext,
+        data: &'a OperationData,
+        printer: &mut IRPrinter,
+    ) -> Result<(), std::io::Error> {
+        GenericOperation::make_from_data(ctx, data)
+            .cast::<ModuleOp>()
+            .unwrap()
+            .custom_print(printer)
     }
-    fn custom_parse(&self, parser: &mut IRParser, ctx: &mut IRContext, st: &mut OperationParserState) -> Option<()> {
+    fn custom_parse(
+        &self,
+        parser: &mut IRParser,
+        ctx: &mut IRContext,
+        st: &mut OperationParserState,
+    ) -> Option<()> {
         ModuleOp::custom_parse(parser, ctx, st)
     }
     fn clone(&self) -> BuiltinOpInterfaceImplWrapper {
         ModuleOp::clone()
     }
 }
-
 
 // Interface builder for BuiltinOp interface.
 impl OpInterfaceBuilder for ModuleOpBuiltinOpInterfaceImpl {
@@ -90,18 +131,20 @@ impl<'a> ModuleOp<'a> {
         ir_checks::verif_outputs_count(diagnostics, self.generic(), 0);
         ir_checks::verif_blocks_count(diagnostics, self.generic(), 1);
     }
+    pub fn clone() -> BuiltinOpInterfaceImplWrapper {
+        BuiltinOpInterfaceImplWrapper::new(Box::new(ModuleOpBuiltinOpInterfaceImpl))
+    }
 }
 
-fn register_module_op(ctx: &mut IRContext) {    let mut infos = OperationTypeBuilder::new();
+fn register_module_op(ctx: &mut IRContext) {
+    let mut infos = OperationTypeBuilder::new();
     infos.set_opname(MODULE_OPNAME);
     infos.set_impl::<ModuleOp>();
     infos.set_builtin_interface::<ModuleOpBuiltinOpInterfaceImpl>();
-    infos.set_tags(&[TAG_DECLS_BLOCK_OP]);
+    infos.set_tags(&[TAG_DECLS_BLOCK_OP, TAG_LOW_LEVEL_OP]);
     infos.add_interface::<ModuleOpBuiltinOpInterfaceImpl>();
     ctx.register_operation(infos.build());
 }
-
-
 
 // @XGENEND
 
@@ -114,8 +157,7 @@ impl ModuleOp<'_> {
 
 // BuiltinOp interface implementation.
 impl<'a> ModuleOp<'a> {
-    pub fn custom_print(&self, printer: &mut IRPrinter,
-    ) -> Result<(), std::io::Error> {
+    pub fn custom_print(&self, printer: &mut IRPrinter) -> Result<(), std::io::Error> {
         printer.print_op_results_and_opname(self.generic(), true)?;
 
         let body = self.get_body();
@@ -143,10 +185,6 @@ impl<'a> ModuleOp<'a> {
         st.set_blocks(vec![block]);
         Some(())
     }
-
-    pub fn clone() -> BuiltinOpInterfaceImplWrapper {
-        BuiltinOpInterfaceImplWrapper::new(Box::new(ModuleOpBuiltinOpInterfaceImpl))
-    }
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -158,6 +196,7 @@ impl<'a> ModuleOp<'a> {
 // @+attr StringAttr<"symbol_name">
 // @+attr FunctionTypeAttr<"function_type">
 // @+block "body"
+// @interfaces ConditionallyLowLevelOp
 // @verifier
 // @custom_print_parse
 
@@ -196,18 +235,26 @@ const FUNCTION_ATTR_FUNCTION_TYPE: &'static str = "function_type";
 
 impl<'a> FunctionOp<'a> {
     pub fn get_symbol_name(&self) -> &'a str {
-        self.get_attr(FUNCTION_ATTR_SYMBOL_NAME).expect("Missing `symbol_name` attribute").cast::<StringAttr>().expect("`symbol_name` attribute must be a StringAttr").val()
+        self.get_attr(FUNCTION_ATTR_SYMBOL_NAME)
+            .expect("Missing `symbol_name` attribute")
+            .cast::<StringAttr>()
+            .expect("`symbol_name` attribute must be a StringAttr")
+            .val()
     }
 
     pub fn get_function_type(&self) -> &'a FunctionType {
-        self.get_attr(FUNCTION_ATTR_FUNCTION_TYPE).expect("Missing `function_type` attribute").cast::<TypeAttr>().expect("`function_type` attribute must be a Type").val().cast::<FunctionType>().expect("`function_type` type attribute must be a FunctionType")
+        self.get_attr(FUNCTION_ATTR_FUNCTION_TYPE)
+            .expect("Missing `function_type` attribute")
+            .cast::<TypeAttr>()
+            .expect("`function_type` attribute must be a Type")
+            .val()
+            .cast::<FunctionType>()
+            .expect("`function_type` type attribute must be a FunctionType")
     }
-
 
     pub fn get_body(&self) -> Block<'a> {
         self.get_block(0)
     }
-
 }
 
 // Wrapper struct for the BuiltinOp interface implementation.
@@ -215,20 +262,40 @@ impl<'a> FunctionOp<'a> {
 pub struct FunctionOpBuiltinOpInterfaceImpl;
 
 impl BuiltinOpInterfaceImpl for FunctionOpBuiltinOpInterfaceImpl {
-    fn verify<'a>(&self, ctx: &'a IRContext, data: &'a OperationData, diagnostics: &mut DiagnosticsEmitter) {
-        GenericOperation::make_from_data(ctx, data).cast::<FunctionOp>().unwrap().verify(diagnostics)
+    fn verify<'a>(
+        &self,
+        ctx: &'a IRContext,
+        data: &'a OperationData,
+        diagnostics: &mut DiagnosticsEmitter,
+    ) {
+        GenericOperation::make_from_data(ctx, data)
+            .cast::<FunctionOp>()
+            .unwrap()
+            .verify(diagnostics)
     }
-    fn custom_print<'a>(&self, ctx: &'a IRContext, data: &'a OperationData, printer: &mut IRPrinter) -> Result<(), std::io::Error> {
-        GenericOperation::make_from_data(ctx, data).cast::<FunctionOp>().unwrap().custom_print(printer)
+    fn custom_print<'a>(
+        &self,
+        ctx: &'a IRContext,
+        data: &'a OperationData,
+        printer: &mut IRPrinter,
+    ) -> Result<(), std::io::Error> {
+        GenericOperation::make_from_data(ctx, data)
+            .cast::<FunctionOp>()
+            .unwrap()
+            .custom_print(printer)
     }
-    fn custom_parse(&self, parser: &mut IRParser, ctx: &mut IRContext, st: &mut OperationParserState) -> Option<()> {
+    fn custom_parse(
+        &self,
+        parser: &mut IRParser,
+        ctx: &mut IRContext,
+        st: &mut OperationParserState,
+    ) -> Option<()> {
         FunctionOp::custom_parse(parser, ctx, st)
     }
     fn clone(&self) -> BuiltinOpInterfaceImplWrapper {
         FunctionOp::clone()
     }
 }
-
 
 // Interface builder for BuiltinOp interface.
 impl OpInterfaceBuilder for FunctionOpBuiltinOpInterfaceImpl {
@@ -240,26 +307,60 @@ impl OpInterfaceBuilder for FunctionOpBuiltinOpInterfaceImpl {
     }
 }
 
+// Wrapper struct for the ConditionallyLowLevelOp interface implementation.
+#[derive(Default)]
+pub struct FunctionOpConditionallyLowLevelOpInterfaceImpl;
+
+impl ConditionallyLowLevelOpInterfaceImpl for FunctionOpConditionallyLowLevelOpInterfaceImpl {
+    fn is_low_level<'a>(&self, ctx: &'a IRContext, data: &'a OperationData) -> bool {
+        GenericOperation::make_from_data(ctx, data)
+            .cast::<FunctionOp>()
+            .unwrap()
+            .is_low_level()
+    }
+}
+
+// Interface builder for ConditionallyLowLevelOp interface.
+impl OpInterfaceBuilder for FunctionOpConditionallyLowLevelOpInterfaceImpl {
+    type InterfaceObjectType = ConditionallyLowLevelOp<'static>;
+
+    fn build_interface_object() -> Box<dyn OpInterfaceWrapper + 'static> {
+        let wrapper = ConditionallyLowLevelOpInterfaceImplWrapper::new(Box::new(Self));
+        Box::new(wrapper)
+    }
+}
+
 impl<'a> FunctionOp<'a> {
     pub fn verify(&self, diagnostics: &mut DiagnosticsEmitter) {
         ir_checks::verif_inputs_count(diagnostics, self.generic(), 0);
-        ir_checks::verif_has_attr_of_type::<StringAttr>(diagnostics, self.generic(), FUNCTION_ATTR_SYMBOL_NAME);
-        ir_checks::verif_has_type_attr_of_type::<FunctionType>(diagnostics, self.generic(), FUNCTION_ATTR_FUNCTION_TYPE);
+        ir_checks::verif_has_attr_of_type::<StringAttr>(
+            diagnostics,
+            self.generic(),
+            FUNCTION_ATTR_SYMBOL_NAME,
+        );
+        ir_checks::verif_has_type_attr_of_type::<FunctionType>(
+            diagnostics,
+            self.generic(),
+            FUNCTION_ATTR_FUNCTION_TYPE,
+        );
         ir_checks::verif_outputs_count(diagnostics, self.generic(), 0);
         ir_checks::verif_blocks_count(diagnostics, self.generic(), 1);
         self.verify_op(diagnostics)
     }
+    pub fn clone() -> BuiltinOpInterfaceImplWrapper {
+        BuiltinOpInterfaceImplWrapper::new(Box::new(FunctionOpBuiltinOpInterfaceImpl))
+    }
 }
 
-fn register_function_op(ctx: &mut IRContext) {    let mut infos = OperationTypeBuilder::new();
+fn register_function_op(ctx: &mut IRContext) {
+    let mut infos = OperationTypeBuilder::new();
     infos.set_opname(FUNCTION_OPNAME);
     infos.set_impl::<FunctionOp>();
     infos.set_builtin_interface::<FunctionOpBuiltinOpInterfaceImpl>();
     infos.add_interface::<FunctionOpBuiltinOpInterfaceImpl>();
+    infos.add_interface::<FunctionOpConditionallyLowLevelOpInterfaceImpl>();
     ctx.register_operation(infos.build());
 }
-
-
 
 // @XGENEND
 
@@ -302,8 +403,7 @@ impl<'a> FunctionOp<'a> {
         }
     }
 
-    pub fn custom_print(&self, printer: &mut IRPrinter,
-    ) -> Result<(), std::io::Error> {
+    pub fn custom_print(&self, printer: &mut IRPrinter) -> Result<(), std::io::Error> {
         printer.print_op_results_and_opname(self.generic(), true)?;
 
         // Print the symbol name.
@@ -312,7 +412,7 @@ impl<'a> FunctionOp<'a> {
         let body = self.get_body();
         // Print the arguments
         write!(printer.os(), "(")?;
-        printer.start_printing_block(body);
+        printer.start_printing_block();
         for (idx, arg) in body.get_operands().enumerate() {
             printer.assign_and_print_value_label(arg.as_id(), true)?;
             write!(printer.os(), ": ")?;
@@ -407,9 +507,14 @@ impl<'a> FunctionOp<'a> {
         st.set_blocks(vec![block]);
         Some(())
     }
+}
 
-    pub fn clone() -> BuiltinOpInterfaceImplWrapper {
-        BuiltinOpInterfaceImplWrapper::new(Box::new(FunctionOpBuiltinOpInterfaceImpl))
+// ConditionallyLowLevelOp interface implementation
+impl<'a> FunctionOp<'a> {
+    pub fn is_low_level(&self) -> bool {
+        // The function is valid if the function type is valid.
+        // Otherwise we'll need to lower it.
+        low_level_types::is_valid_function_type(self.get_function_type())
     }
 }
 
@@ -420,7 +525,7 @@ impl<'a> FunctionOp<'a> {
 // @XGENDEF:SIROp ReturnOp
 // @opname "return"
 // @+input VariadicValue<"returns">
-// @tags "TAG_TERMINATOR_OP"
+// @tags ["TAG_TERMINATOR_OP", "TAG_LOW_LEVEL_OP"]
 // @verifier
 // @custom_print_parse
 
@@ -454,28 +559,47 @@ impl<'a> OperationImpl<'a> for ReturnOp<'a> {
     }
 }
 
-impl<'a> ReturnOp<'a> {
-}
+impl<'a> ReturnOp<'a> {}
 
 // Wrapper struct for the BuiltinOp interface implementation.
 #[derive(Default)]
 pub struct ReturnOpBuiltinOpInterfaceImpl;
 
 impl BuiltinOpInterfaceImpl for ReturnOpBuiltinOpInterfaceImpl {
-    fn verify<'a>(&self, ctx: &'a IRContext, data: &'a OperationData, diagnostics: &mut DiagnosticsEmitter) {
-        GenericOperation::make_from_data(ctx, data).cast::<ReturnOp>().unwrap().verify(diagnostics)
+    fn verify<'a>(
+        &self,
+        ctx: &'a IRContext,
+        data: &'a OperationData,
+        diagnostics: &mut DiagnosticsEmitter,
+    ) {
+        GenericOperation::make_from_data(ctx, data)
+            .cast::<ReturnOp>()
+            .unwrap()
+            .verify(diagnostics)
     }
-    fn custom_print<'a>(&self, ctx: &'a IRContext, data: &'a OperationData, printer: &mut IRPrinter) -> Result<(), std::io::Error> {
-        GenericOperation::make_from_data(ctx, data).cast::<ReturnOp>().unwrap().custom_print(printer)
+    fn custom_print<'a>(
+        &self,
+        ctx: &'a IRContext,
+        data: &'a OperationData,
+        printer: &mut IRPrinter,
+    ) -> Result<(), std::io::Error> {
+        GenericOperation::make_from_data(ctx, data)
+            .cast::<ReturnOp>()
+            .unwrap()
+            .custom_print(printer)
     }
-    fn custom_parse(&self, parser: &mut IRParser, ctx: &mut IRContext, st: &mut OperationParserState) -> Option<()> {
+    fn custom_parse(
+        &self,
+        parser: &mut IRParser,
+        ctx: &mut IRContext,
+        st: &mut OperationParserState,
+    ) -> Option<()> {
         ReturnOp::custom_parse(parser, ctx, st)
     }
     fn clone(&self) -> BuiltinOpInterfaceImplWrapper {
         ReturnOp::clone()
     }
 }
-
 
 // Interface builder for BuiltinOp interface.
 impl OpInterfaceBuilder for ReturnOpBuiltinOpInterfaceImpl {
@@ -493,18 +617,20 @@ impl<'a> ReturnOp<'a> {
         ir_checks::verif_blocks_count(diagnostics, self.generic(), 0);
         self.verify_op(diagnostics)
     }
+    pub fn clone() -> BuiltinOpInterfaceImplWrapper {
+        BuiltinOpInterfaceImplWrapper::new(Box::new(ReturnOpBuiltinOpInterfaceImpl))
+    }
 }
 
-fn register_return_op(ctx: &mut IRContext) {    let mut infos = OperationTypeBuilder::new();
+fn register_return_op(ctx: &mut IRContext) {
+    let mut infos = OperationTypeBuilder::new();
     infos.set_opname(RETURN_OPNAME);
     infos.set_impl::<ReturnOp>();
     infos.set_builtin_interface::<ReturnOpBuiltinOpInterfaceImpl>();
-    infos.set_tags(&[TAG_TERMINATOR_OP]);
+    infos.set_tags(&[TAG_TERMINATOR_OP, TAG_LOW_LEVEL_OP]);
     infos.add_interface::<ReturnOpBuiltinOpInterfaceImpl>();
     ctx.register_operation(infos.build());
 }
-
-
 
 // @XGENEND
 
@@ -562,8 +688,7 @@ impl<'a> ReturnOp<'a> {
         }
     }
 
-    pub fn custom_print(&self, printer: &mut IRPrinter,
-    ) -> Result<(), std::io::Error> {
+    pub fn custom_print(&self, printer: &mut IRPrinter) -> Result<(), std::io::Error> {
         printer.print_op_results_and_opname(self.generic(), true)?;
 
         // Print the return names.
@@ -615,10 +740,6 @@ impl<'a> ReturnOp<'a> {
         st.set_inputs_names(inputs_names);
         st.set_inputs_types(inputs_types);
         Some(())
-    }
-
-    pub fn clone() -> BuiltinOpInterfaceImplWrapper {
-        BuiltinOpInterfaceImplWrapper::new(Box::new(ReturnOpBuiltinOpInterfaceImpl))
     }
 }
 

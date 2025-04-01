@@ -317,6 +317,23 @@ impl CompilerDiagnostics {
         Ok(())
     }
 
+    fn _print_multilines_highligh_at_loc<T: std::io::Write>(
+        &self,
+        ofs: &mut T,
+        f: &mut dyn SourceStream,
+        loc: Location,
+    ) -> Result<(), std::io::Error> {
+        // TODO: Maybe we can improve how this is printed.
+        let lines_count = loc.end_line() - loc.beg_line() + 1;
+        assert!(lines_count > 1);
+        self._print_highligh_line_at_loc(ofs, f, loc.beg_pos(), Some(loc.beg_pos()), None)?;
+        if lines_count > 2 {
+            write!(ofs, "    ...\n")?;
+        }
+        self._print_highligh_line_at_loc(ofs, f, loc.end_pos(), None, Some(loc.end_pos()))?;
+        Ok(())
+    }
+
     // Print the location source code.
     fn _print_loc_source<W: std::io::Write>(
         &self,
@@ -346,7 +363,8 @@ impl CompilerDiagnostics {
                 Some(loc.end_pos()),
             )
         } else {
-            todo!("multi-lines loc print")
+            write!(os, ":\n")?;
+            self._print_multilines_highligh_at_loc(os, &mut *f, loc)
         }
     }
 

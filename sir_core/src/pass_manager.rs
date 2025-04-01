@@ -4,7 +4,14 @@ use diagnostics::{
 };
 
 use crate::{
-    canonicalize_pass::CanonicalizePass, compiler_setup::CompilerSetup, cse_pass::CSEPass, ir_context::IRContext, ir_data::OperationID, ir_printer::IRPrintableObject, ir_transforms::TransformsList, ir_verifier::{IRVerifier, IRVerifierOptions}
+    canonicalize_pass::CanonicalizePass,
+    compiler_setup::CompilerSetup,
+    cse_pass::CSEPass,
+    ir_context::IRContext,
+    ir_data::OperationID,
+    ir_printer::IRPrintableObject,
+    ir_transforms::TransformsList,
+    ir_verifier::{IRVerifier, IRVerifierOptions},
 };
 
 /// A Pass update the IR in a specific way.

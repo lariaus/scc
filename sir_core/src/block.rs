@@ -1,3 +1,4 @@
+use diagnostics::diagnostics::LocatableObject;
 use iostreams::location::Location;
 use parse::{lexer::TokenValue, parser::Parser};
 
@@ -5,7 +6,7 @@ use crate::{
     ir_context::IRContext,
     ir_data::{BlockData, BlockID},
     ir_parser::{BlockParserState, IRParsableObject, IRParsableObjectWithContext},
-    ir_printer::{IRPrintableObject, IRPrinter},
+    ir_printer::{IRPrintableObject, IRPrinter, IRPrinterOptions},
     operation::{GenericOperation, OperationImpl},
     types::Type,
     value::Value,
@@ -46,7 +47,7 @@ impl<'a> Block<'a> {
     }
 
     // Returns an iterator of all operations in the block.
-    pub fn get_ops(&self) -> impl Iterator<Item = GenericOperation<'a>> {
+    pub fn get_ops(&self) -> impl DoubleEndedIterator<Item = GenericOperation<'a>> {
         let ctx = self.ctx();
         self.data
             .ops()
@@ -60,7 +61,7 @@ impl<'a> Block<'a> {
     }
 
     // Returns an iterator of the block operands.
-    pub fn get_operands(&self) -> impl Iterator<Item = Value<'a>> {
+    pub fn get_operands(&self) -> impl DoubleEndedIterator<Item = Value<'a>> {
         let ctx = self.ctx();
         self.data
             .args()
@@ -77,7 +78,7 @@ impl<'a> Block<'a> {
     }
 
     // Returns an iterator of the block operands types.
-    pub fn get_operands_types(&self) -> impl Iterator<Item = &'a Type> {
+    pub fn get_operands_types(&self) -> impl DoubleEndedIterator<Item = &'a Type> {
         self.get_operands().map(|val| val.get_type())
     }
 
@@ -96,8 +97,6 @@ impl<'a> From<Block<'a>> for BlockID {
 
 impl<'b> IRPrintableObject for Block<'b> {
     fn print(&self, printer: &mut IRPrinter) -> Result<(), std::io::Error> {
-        printer.start_printing_block(*self);
-
         // Print the arguments.
         write!(printer.os(), "^(")?;
         for (idx, val) in self.get_operands().enumerate() {
@@ -120,6 +119,10 @@ impl<'b> IRPrintableObject for Block<'b> {
         printer.end_printing_block();
         printer.nl_dec_indent()?;
         write!(printer.os(), "}}")
+    }
+
+    fn initialize_context_on_root(&self, printer: &mut IRPrinter) {
+        printer.initialize_context_with_root_block(*self);
     }
 }
 
@@ -160,6 +163,21 @@ impl IRParsableObjectWithContext for BlockID {
             .loc();
         st.set_loc(Location::join(loc_beg, loc_end));
         parser.make_block_from_state(st, ctx, TokenValue::sym_rcbracket())
+    }
+}
+
+impl<'a> LocatableObject for Block<'a> {
+    fn get_location(&self) -> Location {
+        self.loc()
+    }
+
+    fn get_string_repr(&self) -> Option<String> {
+        // Always print using the generic form.
+        let mut opts = IRPrinterOptions::new();
+        opts.use_generic_form = true;
+        let mut printer = IRPrinter::new_string_builder(opts);
+        printer.print_root(self).unwrap();
+        Some(printer.take_output_string().unwrap())
     }
 }
 

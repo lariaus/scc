@@ -10,6 +10,7 @@ use crate::{
     ir_parser::{IRParser, OperationParserState},
     ir_printer::IRPrinter,
     operation::OperationImpl,
+    operation_type::OperationTypeUID,
 };
 
 /////////////////////////////////////////////////////////////////////////
@@ -67,7 +68,7 @@ pub trait OpInterfaceBuilder {
 
 // @XGENDEF:SIRInterface BuiltinOp
 // @+method {{ verify(diagnostics: "&mut DiagnosticsEmitter") }}
-// @+method {{ custom_print(printer: "&mut IRPrinter") 
+// @+method {{ custom_print(printer: "&mut IRPrinter")
 //   -> "Result<(), std::io::Error>" }}
 // @+staticmethod {{ custom_parse(parser: "&mut IRParser", ctx: "&mut IRContext", st: "&mut OperationParserState")
 //   -> "Option<()>" }}
@@ -75,16 +76,31 @@ pub trait OpInterfaceBuilder {
 
 // @XGENBEGIN
 // Unique identifier for the BuiltinOp Interface
-const BUILTIN_OP_INTERFACE_UID: OpInterfaceUID = OpInterfaceUID::make_from_interface_identifier("BuiltinOp");
+const BUILTIN_OP_INTERFACE_UID: OpInterfaceUID =
+    OpInterfaceUID::make_from_interface_identifier("BuiltinOp");
 
 // Interface Implementation for the BuiltinOp interface.
 pub trait BuiltinOpInterfaceImpl {
-    fn verify<'a>(&self, ctx: &'a IRContext, data: &'a OperationData, diagnostics: &mut DiagnosticsEmitter);
-    fn custom_print<'a>(&self, ctx: &'a IRContext, data: &'a OperationData, printer: &mut IRPrinter) -> Result<(), std::io::Error>;
-    fn custom_parse(&self, parser: &mut IRParser, ctx: &mut IRContext, st: &mut OperationParserState) -> Option<()>;
+    fn verify<'a>(
+        &self,
+        ctx: &'a IRContext,
+        data: &'a OperationData,
+        diagnostics: &mut DiagnosticsEmitter,
+    );
+    fn custom_print<'a>(
+        &self,
+        ctx: &'a IRContext,
+        data: &'a OperationData,
+        printer: &mut IRPrinter,
+    ) -> Result<(), std::io::Error>;
+    fn custom_parse(
+        &self,
+        parser: &mut IRParser,
+        ctx: &mut IRContext,
+        st: &mut OperationParserState,
+    ) -> Option<()>;
     fn clone(&self) -> BuiltinOpInterfaceImplWrapper;
 }
-
 
 // Wrapper object holding an implementation of the BuiltinOp interface.
 pub struct BuiltinOpInterfaceImplWrapper {
@@ -105,14 +121,18 @@ impl OpInterfaceWrapper for BuiltinOpInterfaceImplWrapper {
 
 //Definition of helper functions for the static methods of BuiltinOp interface.
 impl BuiltinOpInterfaceImplWrapper {
-    pub fn custom_parse(&self, parser: &mut IRParser, ctx: &mut IRContext, st: &mut OperationParserState) -> Option<()> {
+    pub fn custom_parse(
+        &self,
+        parser: &mut IRParser,
+        ctx: &mut IRContext,
+        st: &mut OperationParserState,
+    ) -> Option<()> {
         self.dyn_impl.custom_parse(parser, ctx, st)
     }
     pub fn clone(&self) -> BuiltinOpInterfaceImplWrapper {
         self.dyn_impl.clone()
     }
 }
-
 
 // Object to materialize an operation that implements the BuiltinOp interface.
 pub struct BuiltinOp<'a> {
@@ -152,7 +172,7 @@ impl<'a> OperationImpl<'a> for BuiltinOp<'a> {
         &self.ctx
     }
 
-    fn get_op_type_uid() -> crate::operation_type::OperationTypeUID {
+    fn get_op_type_uid() -> OperationTypeUID {
         panic!("Cannot get the TypeUID of an InterfaceOp")
     }
 }
@@ -160,10 +180,14 @@ impl<'a> OperationImpl<'a> for BuiltinOp<'a> {
 // Methods implementation for BuiltinOp.
 impl<'a> BuiltinOp<'a> {
     pub fn verify(&self, diagnostics: &mut DiagnosticsEmitter) {
-        self.wrapper.dyn_impl.verify(&self.ctx, &self.data, diagnostics)
+        self.wrapper
+            .dyn_impl
+            .verify(&self.ctx, &self.data, diagnostics)
     }
     pub fn custom_print(&self, printer: &mut IRPrinter) -> Result<(), std::io::Error> {
-        self.wrapper.dyn_impl.custom_print(&self.ctx, &self.data, printer)
+        self.wrapper
+            .dyn_impl
+            .custom_print(&self.ctx, &self.data, printer)
     }
 }
 
@@ -175,13 +199,11 @@ impl<'a> BuiltinOp<'a> {
     pub(crate) fn get_from_builtin_interface(
         wrapper: &'a BuiltinOpInterfaceImplWrapper,
         ctx: &'a IRContext,
-    data: &'a OperationData) -> Self {
-        Self {
-            wrapper, ctx, data
-        }
+        data: &'a OperationData,
+    ) -> Self {
+        Self { wrapper, ctx, data }
     }
 }
-
 
 /////////////////////////////////////////////////////////////////////////
 // ConstantOp Interface
@@ -194,13 +216,13 @@ impl<'a> BuiltinOp<'a> {
 
 // @XGENBEGIN
 // Unique identifier for the ConstantOp Interface
-const CONSTANT_OP_INTERFACE_UID: OpInterfaceUID = OpInterfaceUID::make_from_interface_identifier("ConstantOp");
+const CONSTANT_OP_INTERFACE_UID: OpInterfaceUID =
+    OpInterfaceUID::make_from_interface_identifier("ConstantOp");
 
 // Interface Implementation for the ConstantOp interface.
 pub trait ConstantOpInterfaceImpl {
     fn get_value<'a>(&self, ctx: &'a IRContext, data: &'a OperationData) -> &'a Attribute;
 }
-
 
 // Wrapper object holding an implementation of the ConstantOp interface.
 pub struct ConstantOpInterfaceImplWrapper {
@@ -220,9 +242,7 @@ impl OpInterfaceWrapper for ConstantOpInterfaceImplWrapper {
 }
 
 //Definition of helper functions for the static methods of ConstantOp interface.
-impl ConstantOpInterfaceImplWrapper {
-}
-
+impl ConstantOpInterfaceImplWrapper {}
 
 // Object to materialize an operation that implements the ConstantOp interface.
 pub struct ConstantOp<'a> {
@@ -262,7 +282,7 @@ impl<'a> OperationImpl<'a> for ConstantOp<'a> {
         &self.ctx
     }
 
-    fn get_op_type_uid() -> crate::operation_type::OperationTypeUID {
+    fn get_op_type_uid() -> OperationTypeUID {
         panic!("Cannot get the TypeUID of an InterfaceOp")
     }
 }

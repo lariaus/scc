@@ -1,0 +1,15 @@
+[package]
+name = "sir_lir"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+diagnostics = { path = "../diagnostics" }
+iostreams = { path = "../iostreams" }
+parse = { path = "../parse" }
+sir_core = { path = "../sir_core" }
+sir_low_level = { path = "../sir_low_level" }
+
+[dev-dependencies]
+sir_func = { path = "../sir_func" }
+xtest = { path = "../xtest" }
