@@ -1,15 +1,30 @@
 // Represent any types possible in this IR.
 
-use diagnostics::emit_error;
-use parse::{lexer::TokenValue, parser::Parser};
+use diagnostics::diagnostics::emit_error;
+use parse::{
+    lexer::{Token, TokenValue},
+    parser::Parser,
+};
 
 use crate::{
     ir_parser::IRParsableObject,
     ir_printer::{IRPrintableObject, IRPrinter},
 };
 
+// Trait implemented by all concrete type struct.
+pub trait TypeSubClass {
+    // Returns true if ty is a Self.
+    fn is_of_type(ty: &Type) -> bool;
+
+    // Downcast ty to Self (only if it's a Self)
+    fn downcast_to_self<'a>(ty: &'a Type) -> Option<&'a Self>;
+
+    // Returns a typename for the Type object.
+    fn get_typename() -> &'static str;
+}
+
 // Any integer type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct IntegerType {
     bitwidth: usize,
     signed: Option<bool>,
@@ -26,6 +41,26 @@ impl IntegerType {
 
     pub fn signed(&self) -> Option<bool> {
         self.signed
+    }
+}
+
+impl TypeSubClass for IntegerType {
+    fn is_of_type(ty: &Type) -> bool {
+        match ty {
+            Type::Int(_) => true,
+            _ => false,
+        }
+    }
+
+    fn downcast_to_self<'a>(ty: &'a Type) -> Option<&'a Self> {
+        match ty {
+            Type::Int(ty) => Some(ty),
+            _ => None,
+        }
+    }
+
+    fn get_typename() -> &'static str {
+        "Integer"
     }
 }
 
@@ -57,7 +92,7 @@ impl IRParsableObject for IntegerType {
         } else if id.starts_with("i") {
             (None, &id[1..])
         } else {
-            emit_error(parser, loc, format!("Expected an integer type"));
+            emit_error(parser, &loc, format!("Expected an integer type"));
             return None;
         };
 
@@ -67,7 +102,7 @@ impl IRParsableObject for IntegerType {
             Err(_) => {
                 emit_error(
                     parser,
-                    loc,
+                    &loc,
                     format!("Failed to parse integer bitwidth for integer type `{}`", id),
                 );
                 return None;
@@ -78,10 +113,30 @@ impl IRParsableObject for IntegerType {
 }
 
 // Any float type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FloatType {
     F32,
     F64,
+}
+
+impl TypeSubClass for FloatType {
+    fn is_of_type(ty: &Type) -> bool {
+        match ty {
+            Type::Float(_) => true,
+            _ => false,
+        }
+    }
+
+    fn downcast_to_self<'a>(ty: &'a Type) -> Option<&'a Self> {
+        match ty {
+            Type::Float(ty) => Some(ty),
+            _ => None,
+        }
+    }
+
+    fn get_typename() -> &'static str {
+        "Float"
+    }
 }
 
 impl IRParsableObject for FloatType {
@@ -98,7 +153,7 @@ impl IRParsableObject for FloatType {
         } else {
             emit_error(
                 parser,
-                loc,
+                &loc,
                 format!("Invalid float type identifier `{}`", id),
             );
             None
@@ -116,7 +171,7 @@ impl IRPrintableObject for FloatType {
 }
 
 // Any pointer type
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PointerType {
     element: Box<Type>,
 }
@@ -130,6 +185,26 @@ impl PointerType {
 
     pub fn element(&self) -> &Type {
         &self.element
+    }
+}
+
+impl TypeSubClass for PointerType {
+    fn is_of_type(ty: &Type) -> bool {
+        match ty {
+            Type::Ptr(_) => true,
+            _ => false,
+        }
+    }
+
+    fn downcast_to_self<'a>(ty: &'a Type) -> Option<&'a Self> {
+        match ty {
+            Type::Ptr(ty) => Some(ty),
+            _ => None,
+        }
+    }
+
+    fn get_typename() -> &'static str {
+        "Pointer"
     }
 }
 
@@ -154,7 +229,7 @@ impl IRParsableObject for PointerType {
 }
 
 // Any tuple types
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TupleType {
     elements: Vec<Type>,
 }
@@ -170,6 +245,26 @@ impl TupleType {
 
     pub fn elements(&self) -> &[Type] {
         &self.elements
+    }
+}
+
+impl TypeSubClass for TupleType {
+    fn is_of_type(ty: &Type) -> bool {
+        match ty {
+            Type::Int(_) => true,
+            _ => false,
+        }
+    }
+
+    fn downcast_to_self<'a>(ty: &'a Type) -> Option<&'a Self> {
+        match ty {
+            Type::Tuple(ty) => Some(ty),
+            _ => None,
+        }
+    }
+
+    fn get_typename() -> &'static str {
+        "Tuple"
     }
 }
 
@@ -210,7 +305,7 @@ impl IRParsableObject for TupleType {
 }
 
 // Any array types.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ArrayType {
     element: Box<Type>,
     size: usize,
@@ -230,6 +325,26 @@ impl ArrayType {
 
     pub fn size(&self) -> usize {
         self.size
+    }
+}
+
+impl TypeSubClass for ArrayType {
+    fn is_of_type(ty: &Type) -> bool {
+        match ty {
+            Type::Array(_) => true,
+            _ => false,
+        }
+    }
+
+    fn downcast_to_self<'a>(ty: &'a Type) -> Option<&'a Self> {
+        match ty {
+            Type::Array(ty) => Some(ty),
+            _ => None,
+        }
+    }
+
+    fn get_typename() -> &'static str {
+        "Function"
     }
 }
 
@@ -256,8 +371,121 @@ impl IRParsableObject for ArrayType {
     }
 }
 
+// Any pointer type
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct FunctionType {
+    args: Vec<Type>,
+    rets: Vec<Type>,
+}
+
+impl TypeSubClass for FunctionType {
+    fn is_of_type(ty: &Type) -> bool {
+        match ty {
+            Type::Function(_) => true,
+            _ => false,
+        }
+    }
+
+    fn downcast_to_self<'a>(ty: &'a Type) -> Option<&'a Self> {
+        match ty {
+            Type::Function(ty) => Some(ty),
+            _ => None,
+        }
+    }
+
+    fn get_typename() -> &'static str {
+        "Function"
+    }
+}
+
+impl FunctionType {
+    pub fn new(args: Vec<Type>, rets: Vec<Type>) -> Type {
+        Type::Function(Self { args, rets })
+    }
+
+    // Returns the types of the arguments of the function.
+    pub fn arguments(&self) -> &[Type] {
+        &self.args
+    }
+
+    // Returns the number of arguments of the function.
+    pub fn num_arguments(&self) -> usize {
+        self.args.len()
+    }
+
+    // Returns the types of the results of the function.
+    pub fn results(&self) -> &[Type] {
+        &self.rets
+    }
+
+    // Returns the number of results of the function.
+    pub fn num_results(&self) -> usize {
+        self.rets.len()
+    }
+}
+
+impl IRPrintableObject for FunctionType {
+    fn print(&self, printer: &mut IRPrinter) -> Result<(), std::io::Error> {
+        write!(printer.os(), "function<(")?;
+        // Print the inputs types.
+        for (idx, ty) in self.arguments().iter().enumerate() {
+            printer.print(ty)?;
+            if idx + 1 < self.arguments().len() {
+                write!(printer.os(), ", ")?;
+            }
+        }
+        write!(printer.os(), ") -> (")?;
+
+        // Print the outputs types.
+        for (idx, ty) in self.results().iter().enumerate() {
+            printer.print(ty)?;
+            if idx + 1 < self.results().len() {
+                write!(printer.os(), ", ")?;
+            }
+        }
+        write!(printer.os(), ")>")
+    }
+}
+
+impl IRParsableObject for FunctionType {
+    fn parse(parser: &mut crate::ir_parser::IRParser) -> Option<Self> {
+        parser.consume_identifier_val_or_error("function")?;
+        parser.consume_sym_or_error(TokenValue::sym_lt())?;
+
+        // Parse the inputs types.
+        let mut args = Vec::new();
+        parser.consume_sym_or_error(TokenValue::sym_lparen())?;
+        if !parser.next_token_is_sym(TokenValue::sym_rparen()) {
+            loop {
+                args.push(Type::parse(parser)?);
+                if !parser.try_consume_sym(TokenValue::sym_comma()) {
+                    break;
+                }
+            }
+        }
+        parser.consume_sym_or_error(TokenValue::sym_rparen())?;
+        parser.consume_sym_or_error(TokenValue::sym_deref())?;
+
+        // Parse the returns types.
+        let mut rets = Vec::new();
+        parser.consume_sym_or_error(TokenValue::sym_lparen())?;
+        if !parser.next_token_is_sym(TokenValue::sym_rparen()) {
+            loop {
+                rets.push(Type::parse(parser)?);
+                if !parser.try_consume_sym(TokenValue::sym_comma()) {
+                    break;
+                }
+            }
+        }
+        parser.consume_sym_or_error(TokenValue::sym_rparen())?;
+        parser.consume_sym_or_error(TokenValue::sym_gt())?;
+
+        Some(FunctionType { args, rets })
+    }
+}
+
 // The base type class for any value in the IR.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Type {
     Int(IntegerType),
     Float(FloatType),
@@ -265,6 +493,7 @@ pub enum Type {
     Ptr(PointerType),
     Tuple(TupleType),
     Array(ArrayType),
+    Function(FunctionType),
 }
 
 impl Type {
@@ -310,9 +539,61 @@ impl Type {
         }
     }
 
+    pub fn is_function(&self) -> bool {
+        match self {
+            Type::Function(_) => true,
+            _ => false,
+        }
+    }
+
     // Construct an integer type.
     pub fn make_int(bitwidth: usize, signed: Option<bool>) -> Self {
         IntegerType::new(bitwidth, signed)
+    }
+
+    // Returns true if `self` is of type T.
+    pub fn isa<T: TypeSubClass>(&self) -> bool {
+        T::is_of_type(self)
+    }
+
+    // Try to cast self to T.
+    // Returns None if it's not a T.
+    pub fn cast<T: TypeSubClass>(&self) -> Option<&T> {
+        T::downcast_to_self(self)
+    }
+}
+
+// check a string only contains numbers
+fn all_nums(s: &str) -> bool {
+    s.chars().all(|c| c.is_ascii_digit())
+}
+
+// Helper function needed to be able to parse a TypeAttr.
+pub(crate) fn token_is_start_of_type(tok: &Token) -> bool {
+    let id = match tok.val() {
+        TokenValue::Identifier(id) => id,
+        _ => return false,
+    };
+
+    if (id.starts_with("si") && all_nums(&id[2..]))
+        || (id.starts_with("ui") && all_nums(&id[2..]))
+        || id.starts_with("i") && all_nums(&id[1..])
+    {
+        true
+    } else if id == "f32" || id == "f64" {
+        true
+    } else if id == "string" {
+        true
+    } else if id == "ptr" {
+        true
+    } else if id == "tuple" {
+        true
+    } else if id == "array" {
+        true
+    } else if id == "function" {
+        true
+    } else {
+        false
     }
 }
 
@@ -325,6 +606,7 @@ impl IRPrintableObject for Type {
             Type::Ptr(ty) => ty.print(printer),
             Type::Tuple(ty) => ty.print(printer),
             Type::Array(ty) => ty.print(printer),
+            Type::Function(ty) => ty.print(printer),
         }
     }
 }
@@ -355,6 +637,8 @@ impl IRParsableObject for Type {
             Some(Type::Tuple(TupleType::parse(parser)?))
         } else if id == "array" {
             Some(Type::Array(ArrayType::parse(parser)?))
+        } else if id == "function" {
+            Some(Type::Function(FunctionType::parse(parser)?))
         } else {
             parser.emit_bad_token_error(&tok, format!("type identifier"));
             None
@@ -472,5 +756,37 @@ mod tests {
             Type::from_string_repr("array<array<i32; 4>; 64>".to_owned())
         );
         check_same_repr("array<array<i32; 4>; 64>");
+    }
+
+    #[test]
+    fn test_function_print_parse() {
+        let i32_ty = IntegerType::new(32, None);
+        let f32_ty = Type::Float(FloatType::F32);
+        let fn_ty = FunctionType::new(vec![], vec![]);
+        assert_eq!(fn_ty.to_string_repr(), "function<() -> ()>");
+        assert_eq!(
+            fn_ty,
+            Type::from_string_repr("function<() -> ()>".to_owned())
+        );
+        check_same_repr("function<() -> ()>");
+
+        let fn_ty = FunctionType::new(vec![i32_ty.clone()], vec![f32_ty.clone()]);
+        assert_eq!(fn_ty.to_string_repr(), "function<(i32) -> (f32)>");
+        assert_eq!(
+            fn_ty,
+            Type::from_string_repr("function<(i32) -> (f32)>".to_owned())
+        );
+        check_same_repr("function<(i32) -> (f32)>");
+
+        let fn_ty = FunctionType::new(
+            vec![i32_ty.clone(), f32_ty.clone()],
+            vec![f32_ty.clone(), i32_ty.clone()],
+        );
+        assert_eq!(fn_ty.to_string_repr(), "function<(i32, f32) -> (f32, i32)>");
+        assert_eq!(
+            fn_ty,
+            Type::from_string_repr("function<(i32, f32) -> (f32, i32)>".to_owned())
+        );
+        check_same_repr("function<(i32, f32) -> (f32, i32)>");
     }
 }

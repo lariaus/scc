@@ -1,5 +1,5 @@
 [package]
-name = "sir"
+name = "sir_core"
 version = "0.1.0"
 edition = "2021"
 
@@ -10,3 +10,6 @@ diagnostics = { path = "../diagnostics" }
 iostreams = { path = "../iostreams" }
 parse = { path = "../parse" }
 utils = { path = "../utils" }
+
+[dev-dependencies]
+xtest = { path = "../xtest" }

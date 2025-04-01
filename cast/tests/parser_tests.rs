@@ -1,5 +1,5 @@
 use cast::parser::CParser;
-use diagnostics::CompilerDiagnosticsEmitter;
+use diagnostics::diagnostics::CompilerInputs;
 use iostreams::source_streams_set::SourceStreamsSet;
 use xtest::{
     test_driver::{OutputTestWriter, TestDriver, TestRunner},
@@ -20,12 +20,12 @@ impl TestRunner for ParserTest {
         let src_file = ss.add_source_file(cfg.path());
 
         // Parse the file
-        let mut parser = CParser::new(ss.open_stream(src_file));
+        let parser = CParser::new(ss.open_stream(src_file));
         let ast = parser.parse();
-        let mut diagnostics = parser.take_diagnostics();
-        if diagnostics.check_has_any_errors(&ss, os) {
-            return 1;
-        }
+        let ast = match ast.resolve_with_stream(CompilerInputs::Sources(&ss), os) {
+            Some(ast) => ast,
+            None => return 1,
+        };
 
         // Dump the IR.
         ast.dump_to(os);

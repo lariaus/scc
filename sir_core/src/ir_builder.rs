@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use iostreams::location::Location;
 
 use crate::{
-    attributes::DictAttr,
+    attributes::{Attribute, DictAttr, StringAttr},
     block::Block,
     ir_context::IRContext,
     ir_data::{BlockID, OperationID, ValueID},
@@ -68,7 +68,11 @@ impl<'a> IRBuilder<'a> {
 
         let inputs = b.inputs.unwrap_or_default();
         let outputs_types = b.outputs_types.unwrap_or_default();
-        let attrs_dict = b.attrs_dict.unwrap_or(DictAttr::empty());
+        let attrs_dict = if let Some(attrs_vals) = b.attrs_vals {
+            DictAttr::new(attrs_vals)
+        } else {
+            b.attrs_dict.unwrap_or(DictAttr::empty())
+        };
         let blocks = b.blocks.unwrap_or_default();
 
         self.ctx
@@ -199,6 +203,16 @@ impl<'a> IRBuilder<'a> {
         self.ctx.move_block_at_end_of_op_children(block, pos);
         Block::make(&self.ctx, self.ctx.get_block_data(block))
     }
+
+    // Get the generic operation from the uid.
+    pub fn get_operation(&self, uid: OperationID) -> GenericOperation {
+        self.ctx.get_generic_operation(uid)
+    }
+
+    // Get the block from the uid.
+    pub fn get_block(&self, uid: BlockID) -> Block {
+        self.ctx.get_block(uid)
+    }
 }
 
 // Helper class used to build a new operation.
@@ -209,6 +223,7 @@ pub struct OpBuilderState<'a, T: OperationImpl<'a>> {
     inputs: Option<Vec<ValueID>>,
     outputs_types: Option<Vec<Type>>,
     attrs_dict: Option<DictAttr>,
+    attrs_vals: Option<Vec<(Attribute, Attribute)>>,
     blocks: Option<Vec<BlockID>>,
 }
 
@@ -221,6 +236,7 @@ impl<'a, T: OperationImpl<'a>> OpBuilderState<'a, T> {
             inputs: None,
             outputs_types: None,
             attrs_dict: None,
+            attrs_vals: None,
             blocks: None,
         }
     }
@@ -261,7 +277,20 @@ impl<'a, T: OperationImpl<'a>> OpBuilderState<'a, T> {
     // Set the attrs dict
     pub fn set_attrs_dict<V: Into<DictAttr>>(&mut self, attrs_dict: V) {
         assert!(self.attrs_dict.is_none());
+        assert!(self.attrs_vals.is_none());
         self.attrs_dict = Some(attrs_dict.into());
+    }
+
+    // Set an attr value.
+    pub fn set_attr<K: Into<String>, V: Into<Attribute>>(&mut self, key: K, val: V) {
+        assert!(self.attrs_dict.is_none());
+        if self.attrs_vals.is_none() {
+            self.attrs_vals = Some(Vec::new());
+        }
+        self.attrs_vals
+            .as_mut()
+            .unwrap()
+            .push((StringAttr::new(key.into()), val.into()));
     }
 
     // Set the blocks of the operation.

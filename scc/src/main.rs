@@ -1,7 +1,7 @@
-use std::env;
+use std::{env, process::exit};
 
 use cast::parser::CParser;
-use diagnostics::CompilerDiagnosticsEmitter;
+use diagnostics::diagnostics::CompilerInputs;
 use iostreams::source_streams_set::SourceStreamsSet;
 
 fn main() {
@@ -15,10 +15,12 @@ fn main() {
     let src_file = ss.add_source_file(&src_file);
 
     // Parse the file
-    let mut parser = CParser::new(ss.open_stream(src_file));
+    let parser = CParser::new(ss.open_stream(src_file));
     let ast = parser.parse();
-    let mut diagnostics = parser.take_diagnostics();
-    diagnostics.resolve(&ss);
+    let ast = match ast.resolve(CompilerInputs::Sources(&ss)) {
+        Some(ast) => ast,
+        None => exit(1),
+    };
 
     // Dump the IR.
     ast.dump();

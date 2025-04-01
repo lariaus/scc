@@ -1,0 +1,32 @@
+// XTEST: sir-opt
+// XTEST-OUTPUT-CHECK
+
+test.mod {
+
+// CHECK-NOT: Error
+test.fun @no_in_out() {
+    test.return
+}
+
+test.fun @multi_outputs(%arg0: i32, %arg1: i32) -> (i32, i32) {
+    %0 = test.add %arg0, %arg0 : i32
+    %1 = test.add %arg1, %arg1 : i32
+    test.return %1, %0 : i32, i32
+}
+
+
+// CHECK: Error: Function signature has 0 results, but the function returns 1 values
+// CHECK-NEXT: test.return %0 : i32
+test.fun @missing_result_type(%arg0: i32, %arg1: i32) {
+    %0 = test.add %arg0, %arg1 : i32
+    test.return %0 : i32
+}
+
+// CHECK: Error: Function signature result type #0 is f32, but the return value #0 is of type i32
+// CHECK-NEXT: test.return %0 : i32
+test.fun @invalid_result_type(%arg0: i32, %arg1: i32) -> (f32) {
+    %0 = test.add %arg0, %arg1 : i32
+    test.return %0 : i32
+}
+
+}

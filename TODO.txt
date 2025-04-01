@@ -1,12 +1,81 @@
-- Implement a mutable IRVisitor (the visitor is mutable, not the IR) (+ helper fun in OperationImpl)
-- Add an helper to create a visitor / mut visitor from a lambda
-- Add a test with a mut lambda (similar to the count add with struct exisiting)
-- Add an IRVerifier struct with basic tests
-- Dispatch verify on each ops.
-- Add helper functions to call verifier on single op.
-- Add verifiers and tests for the TestOps.
-- Create new source file SIROptRunner (wich would be the equivalent of mlir-opt).
-- Create a tester (like Filechek) that use SIROptRunner.
-- Add basic IR Filecheck tests for the TestOps dialect
-- Create a new binary sir-opt that uses SIROptRunner.
+#### P0 Features #####
+
+- [DONE] Implement a mutable IRVisitor (the visitor is mutable, not the IR) (+ helper fun in OperationImpl)
+- [DONE] Add an helper to create a visitor / mut visitor from a lambda
+- [DONE] Add a test with a mut lambda (similar to the count add with struct exisiting)
+- [DONE] Add an IRVerifier struct with basic tests
+- [DONE] Dispatch verify on each ops.
+- [DONE] Add helper functions to call verifier on single op.
+- [DONE] Add verifiers and tests for the TestOps.
+- [DONE] Create new source file SIROptRunner (wich would be the equivalent of mlir-opt).
+- [DONE] Create a tester (like Filechek) that use SIROptRunner.
+- [DONE] Add a Tag feature for ops.
+- [DONE] Add a new TerminatorOp tag.
+- [DONE] In the verifier ensures every block terminates by a terminator.
+- [DONE] Add Filecheck tests for terminator.
+- [DONE] Add a new FunctionType (and unit tests).
+- [DONE] Add a new TypeAttr (and unit tests).
+- [DONE] Add a function_type attr to TestFuncOp (and block operand checks).
+- [DONE] Add unit tests for with function_type and block operand types.
+- [DONE] Add a verifier for TestReturnOp check of operands with function_type.
+- [DONE] Add unit tests with the TestReturnOp.
+- [DONE] Add unit tests with TestFuncOp without operands / results.
+- [DONE] Add a label attr to TestFuncOp and update all the tests.
+- [DONE] Update SIROptRunner to use the output path argument properly.
+- [DONE] Create a basic util helper class based on callbacks to read CLI arguments.
+- [DONE] update SIROpRunner with an -h / --help option that prints the usage.
+- [DONE] update SIROpRunner with a --version option that prints some information.
+- [DONE] Create a new binary sir-opt that uses SIROptRunner.
+- [DONE] Create a new sir_func package
+- [DONE] Defines Module, Function, and Return op (they are copied from test ops)
+- [DONE] Add basic Filecheck unit tests for it.
+- [DONE] Create a new sir_math package
+- [DONE] Define MathIAddOp (copied from TestAddOp)
+- [DONE] Remove the old arith_ops file.
+- [DONE] Add basic Filecheck unit tests for it (using fun too).
+- [DONE] Call it from sir-opt.
+- [DONE] Update sir-opt example in README.MD with an example out of math ops.
+- [DONE] Create a ConstantOp that just takes a scalar number attr.
+- [DONE] Add UnitTests for it.
+- [DONE] Design a Pass interface (all it does is runOnOperation(&mut ctx, op: OperationID))
+- [DONE] Create a new class called IRRewriter (it has a IRBuilder field, but does much more powerful things)
+- [DONE] Create a new OpTransform interface (similar to an OpPatternRewriter in MLIR): has few methods: priority() / canTransformOp() / transformOp().
+- [DONE] Create functions that take a root op, a list of transforms, and apply it to the Graph. (Eg apply_once, apply_greedy, etc).
+- [DONE] Define a PassManager class that can run a sequence of passes.
+- [DONE] Define a new function like apply_single_pass_transforms, but keep applying patterns on edited / created ops.
+- [DONE] Add a new Pure tag op to allow applying CSE on ops. 
+- Create a new CSE Pass that remove unused and identical ops (don't handle blocks for now).
+- Add unit tests for CSE.
+- Create new library lir_ops that contain low level ops (similar to LLVM). Add constant / add, but don't redefine func ops for it.
+- Create a new function, like apply_single_pass_transforms, called legalize_ir whose goal is to apply "transformrs" to legalize IR.
+- Create a new library, low_level_ir, with a new pass LegalizeToLowLevel, and a new tag LowLevelOp.
+- Mark all lir_ops with the tag
+- Create a new Interface ConditionallyLowLevelOp with a function to check wether a function is LowLevel or not.
+- The LegalizeToLowLevel checks and apply transforms on all ops that are not LowLevel.
+- Add transforms to legalize math ops to lir_ops.
 - ...
+
+#### P1 Features #####
+
+- Update SIROptRunner to read from stdin when no input path is specified.
+
+Divide IRContent between IR Nodes and Op Infos:
+- Rename IRContext to IRGraph
+- Add root field (Option<OperationID>) to IRGraph.
+- Create a new IRContext class (and move the op infos to live there)
+- Update the IRParser to have a single parse method that takes both the graph (&mut) and context (&).
+- @TODO[I1][SIR-CORE]: Remove BuiltinOpInterfaceWrapper.clone() hack
+    Clone needed only for the parser. 
+    The context is mutable, but we need it for the parser non-mutable.
+
+
+#### P1 Improvments #####
+
+- @TODO[I0][SIR-CORE]: ValuesDefsScope: optimize `fill_with_predecessors_defs`
+    We're visiting many blocks that we don't need to.
+    Only visit a block if it's a predecessor
+
+
+- @TODO[I2][SIR-CORE]: Support using stdin for input of SIROptRunner.
+
+- @TODO[B3][SIR-CORE]: GreedyIRTRansformer applying transforms every time an op change might lead to infinite loop. We need a limit to stop this.

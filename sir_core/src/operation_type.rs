@@ -1,6 +1,16 @@
+use std::collections::{HashMap, HashSet};
+
 use const_fnv1a_hash::fnv1a_hash_str_64;
 
-use crate::{op_interfaces::BuiltinOpInterfaceWrapper, operation::OperationImpl};
+use crate::{
+    op_interfaces::{
+        BuiltinOpInterfaceWrapper, OpInterfaceBuilder, OpInterfaceUID, OpInterfaceWrapper,
+    },
+    op_tags::OperationTag,
+    operation::OperationImpl,
+};
+
+use crate::op_interfaces::OpInterfaceObject;
 
 // Unique identifier for the OperationType object.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -17,6 +27,8 @@ pub struct OperationTypeInfos {
     uid: OperationTypeUID,
     opname: &'static str,
     builtin_interface: Box<dyn BuiltinOpInterfaceWrapper>,
+    tags: HashSet<OperationTag>,
+    interfaces: HashMap<OpInterfaceUID, Box<dyn OpInterfaceWrapper>>,
 }
 
 impl OperationTypeInfos {
@@ -24,11 +36,15 @@ impl OperationTypeInfos {
         uid: OperationTypeUID,
         opname: &'static str,
         builtin_interface: Box<dyn BuiltinOpInterfaceWrapper>,
+        tags: HashSet<OperationTag>,
+        interfaces: HashMap<OpInterfaceUID, Box<dyn OpInterfaceWrapper>>,
     ) -> Self {
         Self {
             uid,
             opname,
             builtin_interface,
+            tags,
+            interfaces,
         }
     }
 
@@ -47,9 +63,25 @@ impl OperationTypeInfos {
         &*self.builtin_interface
     }
 
+    // Returns true if the op has the associated tag.
+    pub fn has_tag(&self, tag: OperationTag) -> bool {
+        self.tags.contains(&tag)
+    }
+
     // TODO: Hack for parser.
     pub fn cloned_builtin_interface(&self) -> Box<dyn BuiltinOpInterfaceWrapper> {
         self.builtin_interface.clone()
+    }
+
+    // Find the interface implementation for `uid`.
+    // Returns None if there is no implementation of this interface.
+    pub fn get_interface(&self, uid: OpInterfaceUID) -> Option<&dyn OpInterfaceWrapper> {
+        self.interfaces.get(&uid).map(|v| &**v)
+    }
+
+    // Returns true if the op implementation the interface `uid`.
+    pub fn has_interface(&self, uid: OpInterfaceUID) -> bool {
+        self.interfaces.contains_key(&uid)
     }
 }
 
@@ -64,6 +96,8 @@ pub struct OperationTypeBuilder {
     opname: Option<&'static str>,
     uid: Option<OperationTypeUID>,
     builtin_interface: Option<Box<dyn BuiltinOpInterfaceWrapper>>,
+    tags: Option<HashSet<OperationTag>>,
+    interfaces: HashMap<OpInterfaceUID, Box<dyn OpInterfaceWrapper>>,
 }
 
 impl OperationTypeBuilder {
@@ -72,6 +106,8 @@ impl OperationTypeBuilder {
             opname: None,
             uid: None,
             builtin_interface: None,
+            tags: None,
+            interfaces: HashMap::new(),
         }
     }
 
@@ -94,12 +130,32 @@ impl OperationTypeBuilder {
         self.builtin_interface = Some(Box::new(wrapper));
     }
 
+    // Set the tags of the current operation.
+    pub fn set_tags(&mut self, tags: &[OperationTag]) {
+        assert!(self.tags.is_none());
+        let mut tags_set = HashSet::new();
+        for tag in tags {
+            tags_set.insert(*tag);
+        }
+        self.tags = Some(tags_set);
+    }
+
+    pub fn add_interface<T: OpInterfaceBuilder>(&mut self) {
+        let uid = T::InterfaceObjectType::get_interface_uid();
+        assert!(
+            !self.interfaces.contains_key(&uid),
+            "interface redefinition"
+        );
+        self.interfaces.insert(uid, T::build_interface_object());
+    }
+
     pub fn build(self) -> OperationTypeInfos {
         let opname = self.opname.expect("Missing `opname` value");
         let uid = self.uid.expect("Missing `uid` value");
         let builtin_interface = self
             .builtin_interface
             .expect("Missing `builtin_interface` value");
-        OperationTypeInfos::new(uid, opname, builtin_interface)
+        let tags = self.tags.unwrap_or(HashSet::new());
+        OperationTypeInfos::new(uid, opname, builtin_interface, tags, self.interfaces)
     }
 }

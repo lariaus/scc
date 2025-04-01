@@ -1,4 +1,7 @@
-use diagnostics::{CompilerDiagnostics, CompilerDiagnosticsEmitter};
+use diagnostics::{
+    diagnostics::{CompilerDiagnostics, CompilerDiagnosticsEmitter},
+    result::CompilerResult,
+};
 use iostreams::{location::Location, source_stream::SourceStream};
 use parse::{
     lexer::{Lexer, TokenValue},
@@ -180,7 +183,7 @@ impl CParser {
     }
 
     // Parse the whole file and return the AST.
-    pub fn parse(&mut self) -> ASTNode {
+    pub fn parse(mut self) -> CompilerResult<ASTNode> {
         let root = self._r_root();
         self.consume_eof_or_error();
 
@@ -188,7 +191,7 @@ impl CParser {
         let lex_diagnostics = self.lexer.take_diagnostics();
         self.extend_diagnostics(lex_diagnostics);
 
-        root
+        CompilerResult::make(self.diagnostics, Some(root))
     }
 
     // Entry point of the file

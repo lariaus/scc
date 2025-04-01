@@ -1,0 +1,9 @@
+[package]
+name = "sir-opt"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+sir_core = { path = "../sir_core" }
+sir_func = { path = "../sir_func" }
+sir_math = { path = "../sir_math" }

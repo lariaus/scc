@@ -1,0 +1,39 @@
+use std::{env::args, process::exit};
+
+use sir_core::{
+    compiler_setup::CompilerSetup, ir_context::IRContext, pass_manager::register_core_passes,
+    sir_opt_runner::SIROptRunner,
+};
+use sir_func::func_ops::register_func_ops;
+use sir_math::{math_ops::register_math_ops, math_transforms::register_math_transforms};
+
+fn register_all_sir_ops(ctx: &mut IRContext) {
+    register_func_ops(ctx);
+    register_math_ops(ctx);
+}
+
+fn setup_compiler(cs: &mut CompilerSetup) {
+    register_core_passes(cs);
+    register_math_transforms(cs);
+}
+
+fn main() {
+    let mut runner = SIROptRunner::new(
+        "sir-opt".to_owned(),
+        "SIR optimizer binary with support of the standard sir ops".to_owned(),
+        "0.0.1".to_owned(),
+    );
+
+    // Setup the compiler.
+    runner.register_setup_callback(setup_compiler);
+
+    // Register all the operations.
+    runner.register_setup_ctx_callback(register_all_sir_ops);
+
+    // Setup args (drop the binary name).
+    let args: Vec<_> = args().skip(1).collect();
+    runner.setup(args);
+
+    let ret_code = runner.run();
+    exit(ret_code as i32);
+}

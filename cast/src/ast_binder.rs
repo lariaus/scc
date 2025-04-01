@@ -3,7 +3,10 @@
 
 use std::collections::HashMap;
 
-use diagnostics::{emit_error, CompilerDiagnostics, CompilerDiagnosticsEmitter};
+use diagnostics::{
+    diagnostics::{emit_error, CompilerDiagnostics, CompilerDiagnosticsEmitter},
+    result::CompilerResult,
+};
 use iostreams::location::Location;
 
 use crate::{
@@ -118,15 +121,16 @@ impl ASTBinder {
     }
 
     // Running the bindings on the full AST.
-    pub fn bind(&mut self, root: &mut ASTNode) {
+    pub fn bind(mut self, root: &mut ASTNode) -> CompilerResult<()> {
         self.decls_map.open_scope();
         self._add_builtin_c_decls(root.get_loc());
-        root.visit_mut(self);
+        root.visit_mut(&mut self);
         self.decls_map.close_scope();
         assert!(
             self.decls_map.levels.is_empty(),
             "All scopes should have been closed"
         );
+        CompilerResult::make(self.diagnostics, Some(()))
     }
 
     // Add builtin vars / types defined in C.
@@ -263,7 +267,7 @@ impl ASTBinder {
             _ => {
                 emit_error(
                     self,
-                    lhs_loc,
+                    &lhs_loc,
                     format!(
                         "Binop lhs operand expects integer of float types, but got `{}`",
                         lhs_ty
@@ -277,7 +281,7 @@ impl ASTBinder {
             _ => {
                 emit_error(
                     self,
-                    rhs_loc,
+                    &rhs_loc,
                     format!(
                         "Binop rhs operand expects integer of float types, but got `{}`",
                         rhs_ty
@@ -292,7 +296,7 @@ impl ASTBinder {
         if lhs_ty != rhs_ty {
             emit_error(
                 self,
-                op_loc,
+                &op_loc,
                 format!(
                     "Binop operand types differs: lhs is {}, rhs is {}",
                     lhs_ty, rhs_ty
@@ -310,7 +314,7 @@ impl ASTBinder {
         if !exp_type.is_error() && !real_type.is_error() && exp_type != real_type {
             emit_error(
                 self,
-                loc,
+                &loc,
                 format!(
                     "Invalid type: expected `{}` but got `{}`",
                     exp_type, real_type
@@ -324,7 +328,7 @@ impl ASTBinder {
         match self.decls_map.declare_variable(name, ty) {
             Ok(decl) => decl.clone(),
             Err(err) => {
-                emit_error(self, loc, err);
+                emit_error(self, &loc, err);
                 self.err_var_decl.clone()
             }
         }
@@ -335,7 +339,7 @@ impl ASTBinder {
         match self.decls_map.declare_type(name, ty) {
             Ok(decl) => decl.clone(),
             Err(err) => {
-                emit_error(self, loc, err);
+                emit_error(self, &loc, err);
                 self.err_type_decl.clone()
             }
         }
@@ -346,7 +350,7 @@ impl ASTBinder {
         match self.decls_map.find_variable(name) {
             Ok(decl) => decl.clone(),
             Err(err) => {
-                emit_error(self, loc, err);
+                emit_error(self, &loc, err);
                 self.err_var_decl.clone()
             }
         }
@@ -357,7 +361,7 @@ impl ASTBinder {
         match self.decls_map.find_type(name) {
             Ok(decl) => decl.clone(),
             Err(err) => {
-                emit_error(self, loc, err);
+                emit_error(self, &loc, err);
                 self.err_type_decl.clone()
             }
         }
@@ -455,7 +459,7 @@ impl MutableASTVisitor for ASTBinder {
             if var_dims.len() > 0 {
                 emit_error(
                     self,
-                    node.get_loc(),
+                    &node.get_loc(),
                     format!("Array variable declarations not supported yet (TODO)"),
                 );
             }

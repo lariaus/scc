@@ -1,5 +1,5 @@
 use cast::{ast_binder::ASTBinder, parser::CParser};
-use diagnostics::CompilerDiagnosticsEmitter;
+use diagnostics::diagnostics::CompilerInputs;
 use iostreams::source_streams_set::SourceStreamsSet;
 use xtest::{
     test_driver::{OutputTestWriter, TestDriver, TestRunner},
@@ -26,19 +26,21 @@ impl TestRunner for ParserTest {
         }
 
         // Parse the file
-        let mut parser = CParser::new(ss.open_stream(src_file));
-        let mut ast = parser.parse();
-        let mut diagnostics = parser.take_diagnostics();
-        if diagnostics.check_has_any_errors(&ss, os) {
-            return 1;
-        }
+        let parser = CParser::new(ss.open_stream(src_file));
+        let ast = parser.parse();
+        let mut ast = match ast.resolve_with_stream(CompilerInputs::Sources(&ss), os) {
+            Some(ast) => ast,
+            None => return 1,
+        };
 
         // Run the binder.
         if run_binder {
-            let mut binder = ASTBinder::new();
-            binder.bind(&mut ast);
-            let mut diagnostics = binder.take_diagnostics();
-            if diagnostics.check_has_any_errors(&ss, os) {
+            let binder = ASTBinder::new();
+            if binder
+                .bind(&mut ast)
+                .resolve_with_stream(CompilerInputs::Sources(&ss), os)
+                .is_none()
+            {
                 return 1;
             }
         }

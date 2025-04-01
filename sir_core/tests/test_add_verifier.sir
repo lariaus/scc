@@ -1,0 +1,36 @@
+// XTEST: sir-opt
+// XTEST-OUTPUT-CHECK
+
+test.mod {
+
+// CHECK-NOT: Error
+test.fun @add_i32(%arg0: i32, %arg1: i32) -> (i32) {
+    %0 = test.add %arg0, %arg1 : i32
+    test.return %0 : i32
+}
+
+
+// CHECK: Error: TestAdd must have integer type inputs
+// CHECK-NEXT: %0 = test.add %arg0, %arg1 : f32
+test.fun @fail_add_int_type(%arg0: f32, %arg1: f32) -> (f32) {
+    %0 = test.add %arg0, %arg1 : f32
+    test.return %0 : f32
+}
+
+// CHECK: Error: Last op of a block must be a terminator
+// CHECK-NEXT: %0 = test.add %arg0, %arg1 : i32
+test.fun @fail_missing_terminator(%arg0: i32, %arg1: i32) -> (i32) {
+    %0 = test.add %arg0, %arg1 : i32
+}
+
+// CHECK: Error: Terminators must be the ultimate ops of a block
+// CHECK-NEXT: test.return %0 : i32
+test.fun @fail_multi_terminators(%arg0: i32, %arg1: i32) -> (i32) {
+    %0 = test.add %arg0, %arg1 : i32
+    test.return %0 : i32
+    test.return %0 : i32
+}
+
+// CHECK-NOT: Error
+
+}

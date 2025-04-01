@@ -80,6 +80,12 @@ impl<'a> Block<'a> {
     pub fn get_operands_types(&self) -> impl Iterator<Item = &'a Type> {
         self.get_operands().map(|val| val.get_type())
     }
+
+    // Returns the parent op of the block, or none if it has no parents.
+    pub fn parent(&self) -> Option<GenericOperation<'a>> {
+        let op = self.data.parent()?;
+        Some(self.ctx.get_generic_operation(op))
+    }
 }
 
 impl<'a> From<Block<'a>> for BlockID {
@@ -90,10 +96,12 @@ impl<'a> From<Block<'a>> for BlockID {
 
 impl<'b> IRPrintableObject for Block<'b> {
     fn print(&self, printer: &mut IRPrinter) -> Result<(), std::io::Error> {
+        printer.start_printing_block();
+
         // Print the arguments.
         write!(printer.os(), "^(")?;
         for (idx, val) in self.get_operands().enumerate() {
-            printer.assign_and_print_value_label(val.as_id(), Some("arg"))?;
+            printer.assign_and_print_value_label(val.as_id(), true)?;
             write!(printer.os(), ": ")?;
             printer.print(val.get_type())?;
             if idx + 1 < self.get_num_operands() {
@@ -109,6 +117,7 @@ impl<'b> IRPrintableObject for Block<'b> {
             printer.newline()?;
             op.print(printer)?;
         }
+        printer.end_printing_block();
         printer.nl_dec_indent()?;
         write!(printer.os(), "}}")
     }

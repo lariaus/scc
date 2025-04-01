@@ -9,6 +9,7 @@ pub struct BlockOperand {
     arg_idx: usize,
     ty: Type,
     loc: Location,
+    users: Vec<OperationID>,
 }
 
 impl BlockOperand {
@@ -18,6 +19,7 @@ impl BlockOperand {
         arg_idx: usize,
         ty: Type,
         loc: Location,
+        users: Vec<OperationID>,
     ) -> Self {
         Self {
             uid,
@@ -25,6 +27,7 @@ impl BlockOperand {
             arg_idx,
             ty,
             loc,
+            users,
         }
     }
 
@@ -58,6 +61,7 @@ pub struct OperationOutput {
     output_idx: usize,
     ty: Type,
     loc: Location,
+    users: Vec<OperationID>,
 }
 
 impl OperationOutput {
@@ -67,6 +71,7 @@ impl OperationOutput {
         output_idx: usize,
         ty: Type,
         loc: Location,
+        users: Vec<OperationID>,
     ) -> Self {
         Self {
             uid,
@@ -74,6 +79,7 @@ impl OperationOutput {
             output_idx,
             ty,
             loc,
+            users,
         }
     }
 
@@ -136,6 +142,47 @@ impl ValueData {
             ValueData::BlockOperand(_) => None,
             ValueData::OperationOutput(v) => Some(v.op()),
         }
+    }
+
+    /// Returns the users of the value.
+    pub fn users(&self) -> &[OperationID] {
+        match self {
+            ValueData::BlockOperand(v) => &v.users,
+            ValueData::OperationOutput(v) => &v.users,
+        }
+    }
+
+    // Add a new user to the operation (if it's not in the list already).
+    pub(crate) fn add_user(&mut self, op: OperationID) {
+        let users = match self {
+            ValueData::BlockOperand(v) => &mut v.users,
+            ValueData::OperationOutput(v) => &mut v.users,
+        };
+        if !users.contains(&op) {
+            users.push(op);
+        }
+    }
+
+    // Remove an existing user from the list.
+    pub(crate) fn erase_user(&mut self, op: OperationID) {
+        let users = match self {
+            ValueData::BlockOperand(v) => &mut v.users,
+            ValueData::OperationOutput(v) => &mut v.users,
+        };
+        let pos_idx = users
+            .iter()
+            .position(|other| *other == op)
+            .expect("Not in the list");
+        users.remove(pos_idx);
+    }
+
+    // Remove all users of the op.
+    pub(crate) fn clear_users(&mut self) {
+        let users = match self {
+            ValueData::BlockOperand(v) => &mut v.users,
+            ValueData::OperationOutput(v) => &mut v.users,
+        };
+        users.clear();
     }
 }
 
@@ -253,6 +300,14 @@ impl OperationData {
     // Returns the inputs values of the operation.
     pub fn inputs(&self) -> &[ValueID] {
         &self.inputs
+    }
+
+    pub fn get_input(&self, idx: usize) -> ValueID {
+        self.inputs[idx]
+    }
+
+    pub(crate) fn set_input(&mut self, idx: usize, val: ValueID) {
+        self.inputs[idx] = val;
     }
 
     // Returns the outputs values of the operation.

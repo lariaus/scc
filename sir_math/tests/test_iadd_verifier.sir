@@ -1,0 +1,39 @@
+// XTEST: sir-opt
+// XTEST-OUTPUT-CHECK
+
+module {
+
+// CHECK-NOT: Error
+function @basic_add(%arg0: i32, %arg1: i32) -> (i32) {
+    %0 = math.iadd %arg0, %arg1: i32
+    return %0: i32
+}
+
+function @basic_add_generic(%arg0: i32, %arg1: i32) -> (i32) {
+    %0 = "math.iadd"(%arg0, %arg1) : (i32, i32) -> (i32)
+    return %0: i32
+}
+
+// CHECK: Error: MathIAddOp must have integer type inputs
+// CHECK-NEXT: %0 = math.iadd %arg0, %arg1: f32
+function @fail_add_fp(%arg0: f32, %arg1: f32) -> (f32) {
+    %0 = math.iadd %arg0, %arg1: f32
+    return %0: f32
+}
+
+
+// CHECK: Error: All inputs and outputs of math.iadd must have the same type
+// CHECK-NEXT: %0 = "math.iadd"(%arg0, %arg1) : (i32, f32) -> (i32)
+function @fail_add_invalid_operand(%arg0: i32, %arg1: f32) -> (i32) {
+    %0 = "math.iadd"(%arg0, %arg1) : (i32, f32) -> (i32)
+    return %0: i32
+}
+
+// CHECK: Error: All inputs and outputs of math.iadd must have the same type
+// CHECK-NEXT: %0 = "math.iadd"(%arg0, %arg1) : (i32, i32) -> (i16)
+function @fail_add_invalid_result(%arg0: i32, %arg1: i32) -> (i16) {
+    %0 = "math.iadd"(%arg0, %arg1) : (i32, i32) -> (i16)
+    return %0: i16
+}
+
+}

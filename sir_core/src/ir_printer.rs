@@ -1,8 +1,166 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use iostreams::output_source_stream::OutputSourceStream;
 
-use crate::{block::Block, ir_data::ValueID};
+use crate::{
+    block::Block,
+    ir_data::{OperationID, ValueID},
+    operation::{GenericOperation, OperationImpl},
+};
+
+#[derive(Clone, Copy)]
+pub(crate) struct ValueDefInfo {
+    is_arg: bool,
+    idx: usize,
+}
+
+// Helper class to keep track of the values defined in a scope.
+struct ValueDefsScope {
+    defs: HashMap<ValueID, ValueDefInfo>,
+    values_count: usize,
+    args_count: usize,
+}
+
+// Helper class to keep track of the values defined in a scope.
+pub(crate) struct ValueDefsMap {
+    scopes: Vec<ValueDefsScope>,
+    next_value_idx: usize,
+    next_arg_idx: usize,
+}
+
+impl ValueDefsMap {
+    pub(crate) fn new() -> Self {
+        Self {
+            scopes: Vec::new(),
+            next_value_idx: 0,
+            next_arg_idx: 0,
+        }
+    }
+
+    pub(crate) fn open_scope(&mut self) {
+        self.scopes.push(ValueDefsScope {
+            defs: HashMap::new(),
+            values_count: 0,
+            args_count: 0,
+        });
+    }
+
+    pub(crate) fn close_scope(&mut self) {
+        let scope = self.scopes.pop().unwrap();
+        self.next_value_idx -= scope.values_count;
+        self.next_arg_idx -= scope.args_count;
+    }
+
+    // Returns true if the value is in the map.
+    pub(crate) fn contains_def(&self, val: ValueID) -> bool {
+        self.scopes
+            .iter()
+            .any(|scope| scope.defs.contains_key(&val))
+    }
+
+    fn _find_def(&self, val: ValueID) -> Option<ValueDefInfo> {
+        for scope in &self.scopes {
+            if let Some(val) = scope.defs.get(&val) {
+                return Some(*val);
+            }
+        }
+        None
+    }
+
+    // Returns the name of the defined value for the IRPrinter.
+    // Returns None if not found in the map.
+    pub(crate) fn get_def_name(&self, val: ValueID) -> Option<String> {
+        let def = self._find_def(val)?;
+        if def.is_arg {
+            Some(format!("arg{}", def.idx))
+        } else {
+            Some(format!("{}", def.idx))
+        }
+    }
+
+    // Insert a new value in the map.
+    pub(crate) fn insert_op_out_def(&mut self, val: ValueID) {
+        assert!(!self.contains_def(val));
+        let scope = self.scopes.last_mut().unwrap();
+
+        let idx = self.next_value_idx;
+        self.next_value_idx += 1;
+
+        scope.defs.insert(val, ValueDefInfo { is_arg: false, idx });
+        scope.values_count += 1;
+    }
+
+    // Insert a new value in the map.
+    pub(crate) fn insert_block_arg_def(&mut self, val: ValueID) {
+        assert!(!self.contains_def(val));
+        let scope = self.scopes.last_mut().unwrap();
+
+        let idx = self.next_arg_idx;
+        self.next_arg_idx += 1;
+
+        scope.defs.insert(val, ValueDefInfo { is_arg: true, idx });
+        scope.args_count += 1;
+    }
+
+    // Fill the map with all the defs of the predecessors of op.
+    // This is usefull if you want to do some analysis of op, but still need access to the context around it.
+    pub(crate) fn fill_with_predecessors_defs(&mut self, op: GenericOperation) {
+        let target = op.as_id();
+
+        // Find the root of the IR.
+        let mut root = op;
+        loop {
+            let parent = match root.parent() {
+                Some(block) => block,
+                None => break,
+            };
+            root = match parent.parent() {
+                Some(op) => op,
+                None => break,
+            }
+        }
+
+        self._fill_with_predecessors_op_rec(root, target);
+    }
+
+    fn _fill_with_predecessors_op_rec(
+        &mut self,
+        op: GenericOperation,
+        target: OperationID,
+    ) -> bool {
+        // @TODO[I0][SIR-CORE]: ValuesDefsScope: optimize `fill_with_predecessors_defs`
+
+        // Stop once reaching the initial op.
+        if op.as_id() == target {
+            return true;
+        }
+
+        // Go through the blocks first.
+        for block in op.get_blocks() {
+            // Define the block argument.
+            self.open_scope();
+            for arg in block.get_operands() {
+                self.insert_block_arg_def(arg.as_id());
+            }
+
+            // Go through all ops.
+            for op in block.get_ops() {
+                if self._fill_with_predecessors_op_rec(op, target) {
+                    return true;
+                }
+            }
+
+            self.close_scope();
+        }
+
+        // Define the op outputs.
+        for val in op.get_outputs() {
+            self.insert_op_out_def(val.as_id());
+        }
+
+        false
+    }
+}
 
 // Options used to config IR printing.
 pub struct IRPrinterOptions {
@@ -25,9 +183,10 @@ pub struct IRPrinter {
     opts: IRPrinterOptions,
     os: OutputSourceStream,
     ident: usize,
-    values_labels: HashMap<ValueID, String>,
-    values_labels_set: HashSet<String>,
+    value_defs: ValueDefsMap,
     use_generic_form: bool,
+    // Optional printed root op
+    root_op: Option<OperationID>,
 }
 
 impl IRPrinter {
@@ -39,9 +198,9 @@ impl IRPrinter {
             opts,
             os: OutputSourceStream::make_writer(os),
             ident: 0,
-            values_labels: HashMap::new(),
-            values_labels_set: HashSet::new(),
+            value_defs: ValueDefsMap::new(),
             use_generic_form,
+            root_op: None,
         }
     }
 
@@ -52,9 +211,9 @@ impl IRPrinter {
             opts,
             os: OutputSourceStream::make_buffer_builder(),
             ident: 0,
-            values_labels: HashMap::new(),
-            values_labels_set: HashSet::new(),
+            value_defs: ValueDefsMap::new(),
             use_generic_form,
+            root_op: None,
         }
     }
 
@@ -98,9 +257,31 @@ impl IRPrinter {
         self.newline()
     }
 
+    // Call this every time before printing an op.
+    // Ensures it get all infos before printing.
+    pub fn setup_ir_infos(&mut self, op: GenericOperation) {
+        if self.root_op.is_some() {
+            return;
+        }
+
+        self.root_op = Some(op.as_id());
+        self.value_defs.open_scope();
+        self.value_defs.fill_with_predecessors_defs(op);
+    }
+
+    // Call this when starting to print a block.
+    pub fn start_printing_block(&mut self) {
+        self.value_defs.open_scope();
+    }
+
+    // Call this after finishing to print a block.
+    pub fn end_printing_block(&mut self) {
+        self.value_defs.close_scope();
+    }
+
     // Print the label associated to `uid`, or <<UNKNOWN> if it's not mapped
     pub fn print_value_label_or_unknown(&mut self, uid: ValueID) -> Result<(), std::io::Error> {
-        match self.values_labels.get(&uid) {
+        match self.value_defs.get_def_name(uid) {
             Some(label) => write!(self.os.os(), "%{}", label),
             None => write!(self.os.os(), "<<UNKNOWN>"),
         }
@@ -111,29 +292,19 @@ impl IRPrinter {
     pub fn assign_and_print_value_label(
         &mut self,
         uid: ValueID,
-        prefix: Option<&str>,
+        // TODO: We could use a &'static prefix instead
+        is_block_arg: bool,
     ) -> Result<(), std::io::Error> {
-        // Generate a unique label
-        let prefix = prefix.unwrap_or("");
-        // TODO: There might be something smarter than this
-        let mut idx = 0;
-        let unique_label = loop {
-            let label = prefix.to_string() + &idx.to_string();
-            idx += 1;
-            if !self.values_labels_set.contains(&label) {
-                break label;
-            }
-        };
-
-        write!(self.os(), "%{}", &unique_label)?;
-
-        self.values_labels_set.insert(unique_label.clone());
-        match self.values_labels.insert(uid, unique_label) {
-            Some(_old) => panic!("Redefinition of label for `{:?}`", uid),
-            None => {}
+        // Add it to the map.
+        if is_block_arg {
+            self.value_defs.insert_block_arg_def(uid);
+        } else {
+            self.value_defs.insert_op_out_def(uid);
         }
 
-        Ok(())
+        // Then get and print the label.
+        let label = self.value_defs.get_def_name(uid).unwrap();
+        write!(self.os(), "%{}", label)
     }
 
     // Do indent + newline + print_all_ops + reverse indent + newline.

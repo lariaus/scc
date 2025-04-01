@@ -370,15 +370,27 @@ impl OutputCheckerImpl {
                 }
             };
             let mut i_end = i + 1;
+            let mut unmatchable = false;
             let last_line_idx = loop {
                 if i_end == self.matches.len() {
                     break self.output_lines.len() - 1;
                 } else if !self.matches[i_end].is_check_not() {
-                    break self.matches[i_end].match_pos.unwrap().0 - 1;
+                    let next_pos = self.matches[i_end].match_pos.unwrap().0;
+                    if next_pos == 0 {
+                        // Special case: The first CHECK match is on the first line.
+                        // But there is CHECK-NOT before.
+                        // It'll never match
+                        unmatchable = true;
+                        break 0;
+                    }
+                    break next_pos - 1;
                 } else {
                     i_end += 1;
                 }
             };
+            if unmatchable {
+                continue;
+            }
 
             let test_match = &mut self.matches[i];
 

@@ -1,16 +1,17 @@
-use diagnostics::emit_error;
+use diagnostics::diagnostics::{emit_error, DiagnosticsEmitter, LocatableObject};
 use iostreams::location::Location;
 use parse::{lexer::TokenValue, parser::Parser};
 
 use crate::{
-    attributes::DictAttr,
+    attributes::{Attribute, DictAttr},
     block::Block,
     ir_context::IRContext,
     ir_data::{BlockID, OperationData, OperationID, ValueID},
     ir_parser::{IRParsableObject, IRParsableObjectWithContext, IRParser, OperationParserState},
-    ir_printer::{IRPrintableObject, IRPrinter},
-    ir_visitor::{walk_ir, IRVisitor, WalkOlder},
-    op_interfaces::BuiltinOpInterfaceWrapper,
+    ir_printer::{IRPrintableObject, IRPrinter, IRPrinterOptions},
+    ir_visitor::{walk_ir, walk_ir_mut, IRVisitor, IRVisitorMut, WalkOlder},
+    op_interfaces::{BuiltinOpInterfaceWrapper, OpInterfaceObject},
+    op_tags::{OperationTag, TAG_TERMINATOR_OP},
     operation_type::{OperationTypeInfos, OperationTypeRef, OperationTypeUID},
     types::Type,
     value::Value,
@@ -43,7 +44,7 @@ pub trait OperationImpl<'a> {
     //////////////////////////////////////////////
 
     // Verify if the op result is correct.
-    fn verify(&self) {
+    fn verify(&self, _diagnostics: &mut DiagnosticsEmitter) {
         // Default: nothing to verify.
     }
 
@@ -59,7 +60,7 @@ pub trait OperationImpl<'a> {
         let loc = parser.get_next_token_loc();
         emit_error(
             parser,
-            loc,
+            &loc,
             format!(
                 "No custom parser available for op `{}`",
                 st.get_raw_opname().unwrap()
@@ -102,6 +103,14 @@ pub trait OperationImpl<'a> {
         }
     }
 
+    // Returns the type id of the op. (or None if the op isn't registered).
+    fn get_op_type_id(&self) -> Option<OperationTypeUID> {
+        match self.op_type() {
+            OperationTypeRef::Registered(uid) => Some(*uid),
+            OperationTypeRef::Unknown(_) => None,
+        }
+    }
+
     // Returns the type infos of the op. (or None if the op isn't registered).
     fn get_op_type_infos(&self) -> Option<&'a OperationTypeInfos> {
         match self.op_type() {
@@ -113,6 +122,20 @@ pub trait OperationImpl<'a> {
     // Returns the builtin interface impl of the op. (or None if the op isn't registered).
     fn get_op_builtin_interface(&self) -> Option<&'a dyn BuiltinOpInterfaceWrapper> {
         Some(self.get_op_type_infos()?.builtin_interface())
+    }
+
+    // Returns true if the op has the tag.
+    fn has_tag(&self, tag: OperationTag) -> bool {
+        let infos = match self.get_op_type_infos() {
+            Some(infos) => infos,
+            None => return false,
+        };
+        infos.has_tag(tag)
+    }
+
+    // Returns true if the op is a terminator.
+    fn is_terminator(&self) -> bool {
+        self.has_tag(TAG_TERMINATOR_OP)
     }
 
     // Returns the number of inputs of the operation.
@@ -176,6 +199,12 @@ pub trait OperationImpl<'a> {
         self.get_op_data().attrs()
     }
 
+    // Finds an attribute by name.
+    // Returns none if it's not in the attributes dict.
+    fn get_attr(&self, name: &str) -> Option<&'a Attribute> {
+        self.get_attrs_dict().get_with_str_key(name)
+    }
+
     // Returns the number of blocks of the op.
     fn get_num_blocks(&self) -> usize {
         self.get_op_data().blocks().len()
@@ -197,13 +226,50 @@ pub trait OperationImpl<'a> {
             .map(|uid| ctx.get_block(*uid))
     }
 
-    // Walk the IR
+    // Returns the parent block of the op, or none if it has no parent.
+    fn parent(&self) -> Option<Block<'a>> {
+        let block = self.get_op_data().parent()?;
+        Some(self.get_context().get_block(block))
+    }
+
+    // Returns the parent of the op, or none if it has no parent.
+    fn parent_op(&self) -> Option<GenericOperation<'a>> {
+        self.parent()?.parent()
+    }
+
+    // Returns true if the following op implement the interface.
+    fn has_interface<T: OpInterfaceObject<'a>>(&self) -> bool {
+        let infos = match self.get_op_type_infos() {
+            Some(infos) => infos,
+            None => return false,
+        };
+        infos.has_interface(T::get_interface_uid())
+    }
+
+    // Cast the op to the OpInterface T.
+    // Returns None if the op doesn't implement this interface.
+    fn get_interface<T: OpInterfaceObject<'a>>(&self) -> Option<T> {
+        let infos = self.get_op_type_infos()?;
+        let interface = infos.get_interface(T::get_interface_uid())?;
+        Some(T::make(interface, self.get_context(), self.get_op_data()))
+    }
+
+    // Walk the IR.
     fn walk<OpT: OperationImpl<'a>, Visitor: IRVisitor<'a, OpT>>(
         &self,
         order: WalkOlder,
         v: &Visitor,
     ) {
         walk_ir(self.generic(), order, v)
+    }
+
+    // Walk the IR.
+    fn walk_mut<OpT: OperationImpl<'a>, Visitor: IRVisitorMut<'a, OpT>>(
+        &self,
+        order: WalkOlder,
+        v: &mut Visitor,
+    ) {
+        walk_ir_mut(self.generic(), order, v)
     }
 }
 
@@ -235,8 +301,8 @@ impl<'a> OperationImpl<'a> for GenericOperation<'a> {
         true
     }
 
-    fn verify(&self) {
-        todo!("Dispatch verify")
+    fn verify(&self, _diagnostics: &mut DiagnosticsEmitter) {
+        panic!("Verify shouldn't be called directly, use IRVerifier instead")
     }
 }
 
@@ -299,6 +365,21 @@ impl<'a> From<GenericOperation<'a>> for Value<'a> {
     }
 }
 
+impl<'a> LocatableObject for GenericOperation<'a> {
+    fn get_location(&self) -> Location {
+        self.loc()
+    }
+
+    fn get_string_repr(&self) -> Option<String> {
+        // Always print using the generic form.
+        let mut opts = IRPrinterOptions::new();
+        opts.use_generic_form = true;
+        let mut printer = IRPrinter::new_string_builder(opts);
+        printer.print(self).unwrap();
+        Some(printer.take_output_string().unwrap())
+    }
+}
+
 fn print_op_results_and_name<'a>(
     op: GenericOperation<'a>,
     printer: &mut IRPrinter,
@@ -307,7 +388,7 @@ fn print_op_results_and_name<'a>(
     // Print optional op outputs.
     if op.get_num_outputs() > 0 {
         for (idx, input) in op.get_outputs().enumerate() {
-            printer.assign_and_print_value_label(input.as_id(), None)?;
+            printer.assign_and_print_value_label(input.as_id(), false)?;
             if idx + 1 < op.get_num_outputs() {
                 write!(printer.os(), ", ")?;
             }
@@ -400,6 +481,7 @@ pub fn print_op_dispatch<'a, T: OperationImpl<'a>>(
 impl<'b, T: OperationImpl<'b>> IRPrintableObject for T {
     fn print(&self, printer: &mut IRPrinter) -> Result<(), std::io::Error> {
         let generic_op = GenericOperation::make_from_data(self.get_context(), self.get_op_data());
+        printer.setup_ir_infos(generic_op);
 
         if printer.always_use_generic_form() {
             return print_op_generic_form(generic_op, printer);
@@ -494,7 +576,7 @@ fn parse_op_generic_form(
             }
         }
     }
-    let end_loc = parser.consume_sym_or_error(TokenValue::sym_rparen())?.loc();
+    parser.consume_sym_or_error(TokenValue::sym_rparen())?;
     st.set_outputs_types(outputs_types);
 
     // Parse the blocks
@@ -506,7 +588,6 @@ fn parse_op_generic_form(
     }
     st.set_blocks(blocks);
 
-    st.set_end_loc(end_loc);
     parser.make_op_from_state(st, ctx)
 }
 
@@ -532,7 +613,7 @@ impl IRParsableObjectWithContext for OperationID {
             None => {
                 emit_error(
                     parser,
-                    opname_loc,
+                    &opname_loc,
                     format!("No registered operation named `{}`", opname),
                 );
                 return None;

@@ -1,4 +1,4 @@
-use diagnostics::{emit_error, CompilerDiagnosticsEmitter};
+use diagnostics::diagnostics::{emit_error, CompilerDiagnosticsEmitter};
 use iostreams::location::Location;
 
 use crate::lexer::{Lexer, Token, TokenValue};
@@ -24,11 +24,17 @@ pub trait Parser: CompilerDiagnosticsEmitter {
         self.peek_token().loc()
     }
 
+    // Returns the position of the token before the current token.
+    // (Before get_next_token_loc()).
+    fn get_last_token_loc(&mut self) -> Location {
+        self.get_lexer_mut().get_last_token_loc()
+    }
+
     // Emit an error when the wrong token is received.
     fn emit_bad_token_error(&mut self, tok: &Token, expected_msg: String) {
         emit_error(
             self,
-            tok.loc(),
+            &tok.loc(),
             format!("Expected {} but got `{}`", expected_msg, tok),
         );
     }

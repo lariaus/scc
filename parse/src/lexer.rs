@@ -1,6 +1,6 @@
 use std::{collections::HashSet, fmt::Display};
 
-use diagnostics::{emit_error, CompilerDiagnostics, CompilerDiagnosticsEmitter};
+use diagnostics::diagnostics::{emit_error, CompilerDiagnostics, CompilerDiagnosticsEmitter};
 use iostreams::{
     location::{Location, RawFilePosition},
     source_stream::SourceStream,
@@ -14,6 +14,7 @@ pub struct LexerPostion {
     col: usize,
     pos: RawFilePosition,
     next_tok: Option<Token>,
+    last_token_loc: Location,
 }
 
 // Token enum value.
@@ -122,6 +123,10 @@ impl TokenValue {
 
     pub fn sym_dot() -> Self {
         Self::Symbol(".")
+    }
+
+    pub fn sym_at() -> Self {
+        Self::Symbol("@")
     }
 }
 
@@ -312,6 +317,7 @@ pub struct Lexer {
     row: usize,
     col: usize,
     next_tok: Option<Token>,
+    last_token_loc: Location,
 
     // Lexer config.
     // If true, always skip the error tokens (but still emit errors).
@@ -337,12 +343,22 @@ pub struct Lexer {
 
 impl Lexer {
     pub fn new(ifs: Box<dyn SourceStream>) -> Self {
+        let init_loc = Location::new(
+            ifs.get_position(),
+            ifs.get_position(),
+            ifs.get_file_id(),
+            1,
+            1,
+            1,
+            1,
+        );
         Self {
             ifs,
             diagnostics: CompilerDiagnostics::new(),
             row: 1,
             col: 1,
             next_tok: None,
+            last_token_loc: init_loc,
             skip_error_tokens: false,
             support_c_inline_comment: false,
             support_c_multiline_comment: false,
@@ -455,6 +471,7 @@ impl Lexer {
             col: self.col,
             pos: self.ifs.get_position(),
             next_tok: self.next_tok.clone(),
+            last_token_loc: self.last_token_loc,
         }
     }
 
@@ -464,6 +481,13 @@ impl Lexer {
         self.col = pos.col;
         self.ifs.set_position(pos.pos);
         self.next_tok = pos.next_tok;
+        self.last_token_loc = pos.last_token_loc;
+    }
+
+    // Returns the position of the token before the current token.
+    // (Before peek_token().get_loc()).
+    pub fn get_last_token_loc(&self) -> Location {
+        self.last_token_loc
     }
 
     fn _peekc(&mut self) -> Option<char> {
@@ -504,6 +528,7 @@ impl Lexer {
         // Otherwhise consume it.
         let mut res = None;
         std::mem::swap(&mut res, &mut self.next_tok);
+        self.last_token_loc = res.as_ref().unwrap().loc;
         res.unwrap()
     }
 
@@ -535,7 +560,7 @@ impl Lexer {
 
     // Build an error token and emit an error.
     fn _tok_err(&mut self, loc: Location, message: String) -> Token {
-        emit_error(self, loc, message);
+        emit_error(self, &loc, message);
         Token {
             val: TokenValue::Error,
             loc,
@@ -984,6 +1009,7 @@ impl CompilerDiagnosticsEmitter for Lexer {
 
 #[cfg(test)]
 mod tests {
+    use diagnostics::diagnostics::CompilerInputs;
     use iostreams::{
         location::RawFileIdentifier, source_stream::StringSourceStream,
         source_streams_set::SourceStreamsSet,
@@ -1195,6 +1221,14 @@ mod tests {
         assert_eq!(loc_fmt(tok.loc), "3:8[31]-3:8[31]");
     }
 
+    fn logs_to_string(lex: &mut Lexer, ss: &SourceStreamsSet) -> String {
+        let res = lex
+            .get_diagnostics_emitter_mut()
+            .logs_to_string(CompilerInputs::Sources(&ss));
+        lex.get_diagnostics_emitter_mut().clear_diagnostics();
+        res
+    }
+
     #[test]
     fn test_lex_c_char() {
         let ss = SourceStreamsSet::with_unique_raw_source_string(
@@ -1215,7 +1249,7 @@ mod tests {
         assert!(tok.is_error());
         assert_eq!(loc_fmt(tok.loc), "1:6[5]-1:9[8]");
         assert_eq!(
-            l.get_diagnostics_emitter_mut().logs_to_string(&ss),
+            logs_to_string(&mut l, &ss),
             "Lexer: Error: a char literal must have a single character at (source):1:6-9: `'bd'`\n"
         );
 
@@ -1235,7 +1269,7 @@ mod tests {
         assert!(tok.is_error());
         assert_eq!(loc_fmt(tok.loc), "1:26[25]-1:28[27]");
         assert_eq!(
-            l.get_diagnostics_emitter_mut().logs_to_string(&ss),
+            logs_to_string(&mut l, &ss),
             "Lexer: Error: unfinished comment at (source):1:26-28: `'x`\n"
         );
 
@@ -1272,7 +1306,7 @@ mod tests {
         assert!(tok.is_error());
         assert_eq!(loc_fmt(tok.loc), "1:21[20]-1:22[21]");
         assert_eq!(
-            l.get_diagnostics_emitter_mut().logs_to_string(&ss),
+            logs_to_string(&mut l, &ss),
             "Lexer: Error: unfinished comment at (source):1:21-22: `\"`\n"
         );
 

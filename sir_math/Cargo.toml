@@ -1,0 +1,15 @@
+[package]
+name = "sir_math"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+diagnostics = { path = "../diagnostics" }
+iostreams = { path = "../iostreams" }
+parse = { path = "../parse" }
+sir_core = { path = "../sir_core" }
+
+[dev-dependencies]
+sir_func = { path = "../sir_func" }
+xtest = { path = "../xtest" }
+

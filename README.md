@@ -24,20 +24,34 @@ Helper library to implement a source code parser.
 
 ### scc (binary)
 
-C Compiler binary. 
+C Compiler binary.
 Does nothing today.
 In the end it should mimic the behavior of GCC.
 
 ### sir_core
 
 Core part of the SIR library.
-SIR is a Multi Level IR library, similar to LLVM
+SIR is a Multi Level IR library, similar to LLVM / MLIR
 Define all basic systems behind the IR / Context.
 
-### sir_arith
+### sir_func
+
+Part of the SIR library.
+Define Function related ops.
+
+### sir_math
 
 Not done yet.
-Define all arith ops.
+Define all mathematic ops.
+
+### sir-opt (binary)
+
+Test the SIR compiler optimization passes manually.
+Usage:
+
+```shell
+cargo run --bin sir-opt -- -i sir_math/tests/test_iadd_i32.sir
+```
 
 ### xtest
 

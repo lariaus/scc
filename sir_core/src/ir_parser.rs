@@ -1,6 +1,9 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
-use diagnostics::{emit_error, CompilerDiagnostics, CompilerDiagnosticsEmitter};
+use diagnostics::{
+    diagnostics::{emit_error, CompilerDiagnostics, CompilerDiagnosticsEmitter, CompilerInputs},
+    result::CompilerResult,
+};
 use iostreams::{
     location::Location, source_stream::SourceStream, source_streams_set::SourceStreamsSet,
 };
@@ -8,9 +11,10 @@ use parse::{
     lexer::{Lexer, TokenValue},
     parser::{self, Parser},
 };
+use utils::scoped_map::ScopedMap;
 
 use crate::{
-    attributes::DictAttr,
+    attributes::{Attribute, DictAttr, StringAttr},
     ir_context::IRContext,
     ir_data::{BlockID, OperationID, ValueID},
     ir_printer::IRPrintableObject,
@@ -49,7 +53,7 @@ pub struct IRParser {
     opts: IRParserOpts,
     lex: Lexer,
     diagnostics: CompilerDiagnostics,
-    values_map: HashMap<String, ValueID>,
+    values_map: ScopedMap<String, ValueID>,
 }
 
 impl IRParser {
@@ -59,8 +63,9 @@ impl IRParser {
             opts,
             lex: Lexer::new(ifs),
             diagnostics: CompilerDiagnostics::new(),
-            values_map: HashMap::new(),
+            values_map: ScopedMap::new(),
         };
+        res.values_map.open_scope();
         res._setup_lexer();
         res
     }
@@ -101,6 +106,19 @@ impl IRParser {
         self.lex.add_symbol_val(TokenValue::sym_deref());
         self.lex.add_symbol_val(TokenValue::sym_xor());
         self.lex.add_symbol_val(TokenValue::sym_dot());
+        self.lex.add_symbol_val(TokenValue::sym_at());
+    }
+
+    // Call every time you start parsing a block.
+    // This is called automatically for you when using helper methods like `make_block_from_state`.
+    pub fn start_parsing_block(&mut self) {
+        self.values_map.open_scope();
+    }
+
+    // Call every time you're finished parsing a block.
+    // This is called automatically for you when using helper methods like `make_block_from_state`.
+    pub fn end_parsing_block(&mut self) {
+        self.values_map.close_scope();
     }
 
     // Helper function to builder an operation from its state.
@@ -109,7 +127,7 @@ impl IRParser {
         state: OperationParserState,
         ctx: &mut IRContext,
     ) -> Option<OperationID> {
-        let loc = Location::join(state.beg_loc.unwrap(), state.end_loc.unwrap());
+        let loc = Location::join(state.beg_loc.unwrap(), self.get_last_token_loc());
         let op_infos = if let Some(raw_opname) = state.raw_opname {
             // If we can't find the opname, create an unknown op.
             match ctx.find_op_type_infos_from_opname(&raw_opname) {
@@ -118,7 +136,7 @@ impl IRParser {
                     if !self.opts.accept_unregistred_ops {
                         emit_error(
                             self,
-                            loc,
+                            &loc,
                             format!("No registered op found with opname `{}`", &raw_opname),
                         );
                     }
@@ -138,7 +156,7 @@ impl IRParser {
         if inputs_names.len() != inputs_types.len() {
             emit_error(
                 self,
-                loc,
+                &loc,
                 format!(
                     "Op has {} inputs but type signature has {} inputs",
                     inputs_names.len(),
@@ -153,7 +171,7 @@ impl IRParser {
                 None => {
                     emit_error(
                         self,
-                        loc,
+                        &loc,
                         format!("Op input #{} (%{}) isn't defined", idx, in_name),
                     );
                     return None;
@@ -164,7 +182,7 @@ impl IRParser {
             if *in_val_ty != *in_sig_ty {
                 emit_error(
                     self,
-                    loc,
+                    &loc,
                     format!(
                         "Op input #{} (%{}) has type {}, but op signature expects type {}",
                         idx,
@@ -183,7 +201,7 @@ impl IRParser {
         if outputs_names.len() != outputs_names.len() {
             emit_error(
                 self,
-                loc,
+                &loc,
                 format!(
                     "Op has {} outputs but type signature has {} outputs",
                     outputs_types.len(),
@@ -197,22 +215,26 @@ impl IRParser {
             if !names_set.insert(name) {
                 emit_error(
                     self,
-                    loc,
+                    &loc,
                     format!("Op has multiple outputs with the same name (%{})", name),
                 );
                 return None;
             }
-            if self.values_map.contains_key(name) {
+            if self.values_map.contains(name) {
                 emit_error(
                     self,
-                    loc,
+                    &loc,
                     format!("Op redefines an existing output value (%{})", name),
                 );
                 return None;
             }
         }
 
-        let attrs_dict = state.attrs_dict.unwrap_or(DictAttr::empty());
+        let attrs_dict = if let Some(attrs_vals) = state.attrs_vals {
+            DictAttr::new(attrs_vals)
+        } else {
+            state.attrs_dict.unwrap_or(DictAttr::empty())
+        };
 
         let blocks = state.blocks.unwrap_or(vec![]);
 
@@ -250,7 +272,7 @@ impl IRParser {
         if operands_names.len() != operands_types.len() {
             emit_error(
                 self,
-                loc,
+                &loc,
                 format!(
                     "Block has {} operands but type signature has {} operands",
                     operands_names.len(),
@@ -264,20 +286,22 @@ impl IRParser {
             if !names_set.insert(name) {
                 emit_error(
                     self,
-                    loc,
+                    &loc,
                     format!("Block has multiple operands with the same name (%{})", name),
                 );
                 return None;
             }
-            if self.values_map.contains_key(name) {
+            if self.values_map.contains(name) {
                 emit_error(
                     self,
-                    loc,
+                    &loc,
                     format!("Block operand redefines an existing value (%{})", name),
                 );
                 return None;
             }
         }
+
+        self.start_parsing_block();
 
         // Now we have everything to build the block.
         let block_id = ctx._make_block(loc, operands_types, vec![]);
@@ -296,6 +320,8 @@ impl IRParser {
             ctx.move_op_at_end_of_block(block_id, op);
         }
         self.consume_sym_or_error(end_block_sym)?;
+
+        self.end_parsing_block();
 
         Some(block_id)
     }
@@ -320,10 +346,12 @@ impl IRParser {
 
     // Wrapper around `parse`, but ensures the whole stream is used.
     // Should be called by users of IRParser.
-    pub fn parse_all<T: IRParsableObject>(&mut self) -> Option<T> {
-        let res = self.parse()?;
-        self.consume_eof_or_error()?;
-        Some(res)
+    pub fn parse_all<T: IRParsableObject>(mut self) -> CompilerResult<T> {
+        let res = self.parse();
+        if !res.is_none() {
+            self.consume_eof_or_error();
+        }
+        CompilerResult::make(self.diagnostics, res)
     }
 
     // Parse identifier separated with `.`
@@ -361,12 +389,14 @@ impl IRParser {
     // Wrapper around `parse_with_context`, but ensures the whole stream is used.
     // Should be called by users of IRParser.
     pub fn parse_all_with_context<T: IRParsableObjectWithContext>(
-        &mut self,
+        mut self,
         ctx: &mut IRContext,
-    ) -> Option<T> {
-        let res = self.parse_with_context(ctx)?;
-        self.consume_eof_or_error()?;
-        Some(res)
+    ) -> CompilerResult<T> {
+        let res = self.parse_with_context(ctx);
+        if !res.is_none() {
+            self.consume_eof_or_error();
+        }
+        CompilerResult::make(self.diagnostics, res)
     }
 }
 
@@ -401,15 +431,10 @@ pub trait IRParsableObject: Sized {
 
         // Parse the ir.
         let opts = IRParserOpts::new();
-        let mut parser = IRParser::new(opts, ss);
+        let parser = IRParser::new(opts, ss);
         let res = parser.parse_all::<Self>();
-
-        // Resolve diagnostics in case of error (panic)
-        let mut diagnostics = parser.take_diagnostics();
-        diagnostics.resolve(&mut set);
-
-        // Here there shouldn't be any errors.
-        res.unwrap()
+        res.resolve(CompilerInputs::Sources(&set))
+            .expect("Parsing failure")
     }
 }
 
@@ -428,22 +453,16 @@ pub trait IRParsableObjectWithContext: Sized {
 
         // Parse the ir.
         let opts = IRParserOpts::new();
-        let mut parser = IRParser::new(opts, ss);
+        let parser = IRParser::new(opts, ss);
         let res = parser.parse_all_with_context::<Self>(ctx);
-
-        // Resolve diagnostics in case of error (panic)
-        let mut diagnostics = parser.take_diagnostics();
-        diagnostics.resolve(&mut set);
-
-        // Here there shouldn't be any errors.
-        res.unwrap()
+        res.resolve(CompilerInputs::Sources(&set))
+            .expect("Parsing failure")
     }
 }
 
 // Helper class to parse and build an operation
 pub struct OperationParserState {
     beg_loc: Option<Location>,
-    end_loc: Option<Location>,
     raw_opname: Option<String>,
     op_type_uid: Option<OperationTypeUID>,
     inputs_names: Option<Vec<String>>,
@@ -451,6 +470,7 @@ pub struct OperationParserState {
     inputs_types: Option<Vec<Type>>,
     outputs_types: Option<Vec<Type>>,
     attrs_dict: Option<DictAttr>,
+    attrs_vals: Option<Vec<(Attribute, Attribute)>>,
     blocks: Option<Vec<BlockID>>,
 }
 
@@ -459,7 +479,6 @@ impl OperationParserState {
     pub fn new() -> Self {
         Self {
             beg_loc: None,
-            end_loc: None,
             raw_opname: None,
             op_type_uid: None,
             inputs_names: None,
@@ -467,6 +486,7 @@ impl OperationParserState {
             inputs_types: None,
             outputs_types: None,
             attrs_dict: None,
+            attrs_vals: None,
             blocks: None,
         }
     }
@@ -475,12 +495,6 @@ impl OperationParserState {
     pub fn set_beg_loc(&mut self, beg_loc: Location) {
         assert!(self.beg_loc.is_none());
         self.beg_loc = Some(beg_loc);
-    }
-
-    // Set the end location for the current op in the IR.
-    pub fn set_end_loc(&mut self, end_loc: Location) {
-        assert!(self.end_loc.is_none());
-        self.end_loc = Some(end_loc);
     }
 
     // Get the operation opname.
@@ -529,7 +543,20 @@ impl OperationParserState {
     // Set the operation attributes dict.
     pub fn set_attrs_dict(&mut self, attrs_dict: DictAttr) {
         assert!(self.attrs_dict.is_none());
+        assert!(self.attrs_vals.is_none());
         self.attrs_dict = Some(attrs_dict);
+    }
+
+    // Set an attribute.
+    pub fn set_attr(&mut self, key: &str, val: Attribute) {
+        assert!(self.attrs_dict.is_none());
+        if self.attrs_vals.is_none() {
+            self.attrs_vals = Some(Vec::new());
+        }
+        self.attrs_vals
+            .as_mut()
+            .unwrap()
+            .push((StringAttr::new(key.to_owned()), val));
     }
 
     // Set the operation blocks.

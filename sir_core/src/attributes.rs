@@ -1,16 +1,35 @@
 // Attributes are constant values defined in the IR, attached to each op.
 
+use std::hash::Hash;
+
 use parse::{lexer::TokenValue, parser::Parser};
 use utils::stringutils::encode_string_literal;
 
 use crate::{
     ir_parser::IRParsableObject,
     ir_printer::{IRPrintableObject, IRPrinter},
-    types::Type,
+    types::{token_is_start_of_type, Type},
 };
 
+// Trait implemented by all concrete attribute struct.
+pub trait AttributeSubClass {
+    // Returns true if attr is a Self.
+    fn is_of_type(attr: &Attribute) -> bool;
+
+    // Downcast attr to Self (only if it's a Self)
+    fn downcast_to_self<'a>(attr: &'a Attribute) -> Option<&'a Self>;
+
+    // Returns a typename for the Attribute object.
+    fn get_typename() -> &'static str;
+
+    // Returns the type of the attribute, or none if it has no type.
+    fn get_type(&self) -> Option<&Type> {
+        None
+    }
+}
+
 // Represent any constant integer value.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct IntegerAttr {
     val: u64,
     ty: Type,
@@ -24,6 +43,30 @@ impl IntegerAttr {
 
     pub fn raw_val(&self) -> u64 {
         self.val
+    }
+}
+
+impl AttributeSubClass for IntegerAttr {
+    fn is_of_type(attr: &Attribute) -> bool {
+        match attr {
+            Attribute::Int(_) => true,
+            _ => false,
+        }
+    }
+
+    fn downcast_to_self<'a>(attr: &'a Attribute) -> Option<&'a Self> {
+        match attr {
+            Attribute::Int(attr) => Some(attr),
+            _ => None,
+        }
+    }
+
+    fn get_typename() -> &'static str {
+        "Integer"
+    }
+
+    fn get_type(&self) -> Option<&Type> {
+        Some(&self.ty)
     }
 }
 
@@ -50,6 +93,38 @@ impl IRParsableObject for IntegerAttr {
 pub struct FloatAttr {
     val: f64,
     ty: Type,
+}
+
+// Is this actually safe to Hash a float number this way ?
+impl Hash for FloatAttr {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.val.to_bits().hash(state);
+        self.ty.hash(state);
+    }
+}
+
+impl AttributeSubClass for FloatAttr {
+    fn is_of_type(attr: &Attribute) -> bool {
+        match attr {
+            Attribute::Float(_) => true,
+            _ => false,
+        }
+    }
+
+    fn downcast_to_self<'a>(attr: &'a Attribute) -> Option<&'a Self> {
+        match attr {
+            Attribute::Float(attr) => Some(attr),
+            _ => None,
+        }
+    }
+
+    fn get_typename() -> &'static str {
+        "Float"
+    }
+
+    fn get_type(&self) -> Option<&Type> {
+        Some(&self.ty)
+    }
 }
 
 impl FloatAttr {
@@ -80,7 +155,7 @@ impl IRParsableObject for FloatAttr {
 }
 
 // Represent any constant string value.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct StringAttr {
     val: String,
 }
@@ -92,6 +167,26 @@ impl StringAttr {
 
     pub fn val(&self) -> &str {
         &self.val
+    }
+}
+
+impl AttributeSubClass for StringAttr {
+    fn is_of_type(attr: &Attribute) -> bool {
+        match attr {
+            Attribute::Str(_) => true,
+            _ => false,
+        }
+    }
+
+    fn downcast_to_self<'a>(attr: &'a Attribute) -> Option<&'a Self> {
+        match attr {
+            Attribute::Str(attr) => Some(attr),
+            _ => None,
+        }
+    }
+
+    fn get_typename() -> &'static str {
+        "String"
     }
 }
 
@@ -111,8 +206,22 @@ impl IRParsableObject for StringAttr {
     }
 }
 
+impl Into<StringAttr> for String {
+    fn into(self) -> StringAttr {
+        StringAttr { val: self }
+    }
+}
+
+impl Into<StringAttr> for &str {
+    fn into(self) -> StringAttr {
+        StringAttr {
+            val: self.to_owned(),
+        }
+    }
+}
+
 // Heterogenous untyped array of attributes.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Hash)]
 pub struct ArrayAttr {
     elements: Vec<Attribute>,
 }
@@ -128,6 +237,26 @@ impl ArrayAttr {
 
     pub fn elements(&self) -> &[Attribute] {
         &self.elements
+    }
+}
+
+impl AttributeSubClass for ArrayAttr {
+    fn is_of_type(attr: &Attribute) -> bool {
+        match attr {
+            Attribute::Array(_) => true,
+            _ => false,
+        }
+    }
+
+    fn downcast_to_self<'a>(attr: &'a Attribute) -> Option<&'a Self> {
+        match attr {
+            Attribute::Array(attr) => Some(attr),
+            _ => None,
+        }
+    }
+
+    fn get_typename() -> &'static str {
+        "Array"
     }
 }
 
@@ -164,7 +293,7 @@ impl IRParsableObject for ArrayAttr {
 }
 
 // Heterogenous untyped dictionary of attributes with string keys.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Hash)]
 pub struct DictAttr {
     // Weird implementation because HashMap doesn't support Eq
     elements: Vec<(Attribute, Attribute)>,
@@ -193,6 +322,43 @@ impl DictAttr {
 
     pub fn elements(&self) -> &[(Attribute, Attribute)] {
         &self.elements
+    }
+
+    // Find the attribute with key `key`.
+    // Returns None if not found.
+    pub fn get_with_str_key(&self, key: &str) -> Option<&Attribute> {
+        Some(
+            &self
+                .elements()
+                .iter()
+                .find(|(elem_key, _elem_val)| {
+                    let elem_key = match elem_key {
+                        Attribute::Str(s) => s.val(),
+                        _ => return false,
+                    };
+                    elem_key == key
+                })?
+                .1,
+        )
+    }
+}
+
+impl AttributeSubClass for DictAttr {
+    fn is_of_type(attr: &Attribute) -> bool {
+        match attr {
+            Attribute::Dict(_) => true,
+            _ => false,
+        }
+    }
+
+    fn downcast_to_self<'a>(attr: &'a Attribute) -> Option<&'a Self> {
+        match attr {
+            Attribute::Dict(attr) => Some(attr),
+            _ => None,
+        }
+    }
+    fn get_typename() -> &'static str {
+        "Dict"
     }
 }
 
@@ -235,14 +401,64 @@ impl IRParsableObject for DictAttr {
     }
 }
 
+// Attribute that refers to a type.
+#[derive(Debug, Clone, PartialEq, Hash)]
+pub struct TypeAttr {
+    val: Type,
+}
+
+impl TypeAttr {
+    pub fn new(val: Type) -> Attribute {
+        Attribute::Type(Self { val })
+    }
+
+    pub fn val(&self) -> &Type {
+        &self.val
+    }
+}
+
+impl AttributeSubClass for TypeAttr {
+    fn is_of_type(attr: &Attribute) -> bool {
+        match attr {
+            Attribute::Type(_) => true,
+            _ => false,
+        }
+    }
+
+    fn downcast_to_self<'a>(attr: &'a Attribute) -> Option<&'a Self> {
+        match attr {
+            Attribute::Type(attr) => Some(attr),
+            _ => None,
+        }
+    }
+
+    fn get_typename() -> &'static str {
+        "TypeAttr"
+    }
+}
+
+impl IRPrintableObject for TypeAttr {
+    fn print(&self, printer: &mut IRPrinter) -> Result<(), std::io::Error> {
+        printer.print(self.val())
+    }
+}
+
+impl IRParsableObject for TypeAttr {
+    fn parse(parser: &mut crate::ir_parser::IRParser) -> Option<Self> {
+        let val = Type::parse(parser)?;
+        Some(Self { val })
+    }
+}
+
 // Represent all possible Attributes in the IR.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Hash)]
 pub enum Attribute {
     Int(IntegerAttr),
     Float(FloatAttr),
     Str(StringAttr),
     Array(ArrayAttr),
     Dict(DictAttr),
+    Type(TypeAttr),
 }
 
 impl Attribute {
@@ -280,6 +496,37 @@ impl Attribute {
             _ => false,
         }
     }
+
+    pub fn is_type(&self) -> bool {
+        match self {
+            Attribute::Type(_) => true,
+            _ => false,
+        }
+    }
+
+    /// Returns the type of the attribute.
+    /// Or None if the type isn't typed
+    pub fn get_type(&self) -> Option<&Type> {
+        match self {
+            Attribute::Int(attr) => attr.get_type(),
+            Attribute::Float(attr) => attr.get_type(),
+            Attribute::Str(attr) => attr.get_type(),
+            Attribute::Array(attr) => attr.get_type(),
+            Attribute::Dict(attr) => attr.get_type(),
+            Attribute::Type(attr) => attr.get_type(),
+        }
+    }
+
+    // Returns true if `self` is of type T.
+    pub fn isa<T: AttributeSubClass>(&self) -> bool {
+        T::is_of_type(self)
+    }
+
+    // Try to cast self to T.
+    // Returns None if it's not a T.
+    pub fn cast<T: AttributeSubClass>(&self) -> Option<&T> {
+        T::downcast_to_self(self)
+    }
 }
 
 impl IRPrintableObject for Attribute {
@@ -290,6 +537,7 @@ impl IRPrintableObject for Attribute {
             Attribute::Str(attr) => attr.print(printer),
             Attribute::Array(attr) => attr.print(printer),
             Attribute::Dict(attr) => attr.print(printer),
+            Attribute::Type(attr) => attr.print(printer),
         }
     }
 }
@@ -308,6 +556,8 @@ impl IRParsableObject for Attribute {
             Some(Attribute::Array(ArrayAttr::parse(parser)?))
         } else if parser.next_token_is_sym(TokenValue::sym_lcbracket()) {
             Some(Attribute::Dict(DictAttr::parse(parser)?))
+        } else if token_is_start_of_type(parser.peek_token()) {
+            Some(Attribute::Type(TypeAttr::parse(parser)?))
         } else {
             let err_tok = parser.peek_token().clone();
             parser.emit_bad_token_error(&err_tok, format!("attribute value"));
@@ -318,7 +568,7 @@ impl IRParsableObject for Attribute {
 
 #[cfg(test)]
 mod tests {
-    use crate::types::{FloatType, IntegerType};
+    use crate::types::{ArrayType, FloatType, IntegerType};
 
     use super::*;
 
@@ -404,5 +654,23 @@ mod tests {
         assert_eq!(attr.to_string_repr(), "{}");
         assert_eq!(attr, Attribute::from_string_repr("{}".to_owned()));
         check_same_repr("{}");
+    }
+
+    #[test]
+    fn test_type_print_parse() {
+        let i32_ty = IntegerType::new(32, None);
+        let attr = TypeAttr::new(i32_ty.clone());
+        assert_eq!(attr.to_string_repr(), "i32");
+        assert_eq!(attr, Attribute::from_string_repr("i32".to_owned()));
+        check_same_repr("i32");
+
+        let array_ty = ArrayType::new(i32_ty.clone(), 42);
+        let attr = TypeAttr::new(array_ty);
+        assert_eq!(attr.to_string_repr(), "array<i32; 42>");
+        assert_eq!(
+            attr,
+            Attribute::from_string_repr("array<i32; 42>".to_owned())
+        );
+        check_same_repr("array<i32; 42>");
     }
 }
