@@ -1,0 +1,12 @@
+[workspace]
+
+members = [
+    "cast",
+    "diagnostics",
+    "iostreams",
+    "scc",
+    "sir_core",
+    "parse",
+    "utils",
+    "xtest",
+]

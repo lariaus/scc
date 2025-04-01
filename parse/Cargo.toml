@@ -1,0 +1,9 @@
+[package]
+name = "parse"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+diagnostics = { path = "../diagnostics" }
+iostreams = { path = "../iostreams" }
+utils = { path = "../utils" }

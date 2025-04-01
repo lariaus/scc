@@ -1,0 +1,12 @@
+[package]
+name = "sir"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+global_counter = "0.2.2"
+const-fnv1a-hash = "1.0.0"
+diagnostics = { path = "../diagnostics" }
+iostreams = { path = "../iostreams" }
+parse = { path = "../parse" }
+utils = { path = "../utils" }

@@ -1,0 +1,12 @@
+- Implement a mutable IRVisitor (the visitor is mutable, not the IR) (+ helper fun in OperationImpl)
+- Add an helper to create a visitor / mut visitor from a lambda
+- Add a test with a mut lambda (similar to the count add with struct exisiting)
+- Add an IRVerifier struct with basic tests
+- Dispatch verify on each ops.
+- Add helper functions to call verifier on single op.
+- Add verifiers and tests for the TestOps.
+- Create new source file SIROptRunner (wich would be the equivalent of mlir-opt).
+- Create a tester (like Filechek) that use SIROptRunner.
+- Add basic IR Filecheck tests for the TestOps dialect
+- Create a new binary sir-opt that uses SIROptRunner.
+- ...
