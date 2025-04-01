@@ -174,6 +174,23 @@ impl<'a> IRBuilder<'a> {
         self.create_op_at(self.ip, loc, b)
     }
 
+    // Materialize a constant from `val` and insert it at `pos`.
+    pub fn materialize_constant_at(
+        &mut self,
+        pos: InsertionPoint,
+        loc: Location,
+        val: Attribute,
+    ) -> GenericOperation {
+        let op = self.ctx._make_operation_from_constant(loc, val);
+        self._move_op_at(op, pos);
+        GenericOperation::make(self.ctx, op)
+    }
+
+    // Materialize a constant from `val` and insert it at the current insertion point.
+    pub fn materialize_constant(&mut self, loc: Location, val: Attribute) -> GenericOperation {
+        self.materialize_constant_at(self.ip, loc, val)
+    }
+
     // Create a detached block.
     pub fn create_block<T: Into<Vec<Type>>>(&mut self, loc: Location, operands_types: T) -> Block {
         let block = self._create_block(loc, operands_types.into());

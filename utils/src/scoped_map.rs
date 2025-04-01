@@ -17,6 +17,11 @@ impl<K: Hash + Eq + Sized, V> ScopedMap<K, V> {
         self.scopes.len()
     }
 
+    // Remove the whole map data.
+    pub fn clear(&mut self) {
+        self.scopes.clear();
+    }
+
     // Open a new scope.
     pub fn open_scope(&mut self) {
         self.scopes.push(HashMap::new());

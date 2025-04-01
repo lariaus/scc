@@ -5,6 +5,7 @@ use sir_core::{
     sir_opt_runner::SIROptRunner,
 };
 use sir_func::{func_ops::register_func_ops, func_transforms::register_func_transforms};
+use sir_interpreter::transforms::register_interpreter_transforms;
 use sir_lir::lir_ops::register_lir_ops;
 use sir_low_level::register_low_level_passes;
 use sir_math::{math_ops::register_math_ops, math_transforms::register_math_transforms};
@@ -23,6 +24,7 @@ fn setup_compiler(cs: &mut CompilerSetup) {
     // Register transforms.
     register_func_transforms(cs);
     register_math_transforms(cs);
+    register_interpreter_transforms(cs);
 }
 
 fn main() {

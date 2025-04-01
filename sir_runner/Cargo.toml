@@ -1,15 +1,12 @@
 [package]
-name = "sir_func"
+name = "sir_runner"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 diagnostics = { path = "../diagnostics" }
 iostreams = { path = "../iostreams" }
-parse = { path = "../parse" }
 sir_core = { path = "../sir_core" }
 sir_interpreter = { path = "../sir_interpreter" }
-sir_low_level = { path = "../sir_low_level" }
-
-[dev-dependencies]
+utils = { path = "../utils" }
 xtest = { path = "../xtest" }

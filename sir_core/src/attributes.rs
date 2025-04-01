@@ -8,7 +8,7 @@ use utils::stringutils::encode_string_literal;
 use crate::{
     ir_parser::IRParsableObject,
     ir_printer::{IRPrintableObject, IRPrinter},
-    types::{token_is_start_of_type, Type},
+    types::{token_is_start_of_type, IntegerType, Type},
 };
 
 // Trait implemented by all concrete attribute struct.
@@ -43,6 +43,11 @@ impl IntegerAttr {
 
     pub fn raw_val(&self) -> u64 {
         self.val
+    }
+
+    // Returns the bitwidth of the type
+    pub fn bitwidth(&self) -> usize {
+        self.ty.cast::<IntegerType>().unwrap().bitwidth()
     }
 }
 

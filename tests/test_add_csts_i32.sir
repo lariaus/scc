@@ -1,0 +1,13 @@
+
+// cargo run --bin sir-opt -- -i tests/test_add_csts_i32.sir --canonicalize --cse --debug
+
+module {
+
+function @add() -> (i32) {
+    %0 = generic.constant 1 : i32
+    %1 = generic.constant 2 : i32
+    %2 = lir.iadd %0, %1 : i32
+    return %2 : i32
+}
+
+}

@@ -6,19 +6,27 @@ use sir_core::{
     attributes::{Attribute, StringAttr, TypeAttr},
     block::Block,
     ir_builder::OpImplBuilderState,
-    ir_context::IRContext,
+    ir_context::{IRContext, RawOpBuilder},
     ir_data::{OperationData, ValueID},
     ir_parser::{BlockParserState, IRParsableObject, IRParser, OperationParserState},
     ir_printer::{IRPrintableObject, IRPrinter},
     ir_verifier::ir_checks,
     op_interfaces::{
-        BuiltinOp, BuiltinOpInterfaceImpl, BuiltinOpInterfaceImplWrapper, OpInterfaceBuilder,
-        OpInterfaceWrapper,
+        BuiltinOp, BuiltinOpInterfaceImpl, BuiltinOpInterfaceImplWrapper, ConstantOp,
+        ConstantOpInterfaceImpl, ConstantOpInterfaceImplWrapper, OpInterfaceBuilder,
+        OpInterfaceWrapper, SymbolOp, SymbolOpInterfaceImpl, SymbolOpInterfaceImplWrapper,
     },
-    op_tags::{TAG_DECLS_BLOCK_OP, TAG_TERMINATOR_OP},
+    op_tags::{TAG_DECLS_BLOCK_OP, TAG_PURE_OP, TAG_TERMINATOR_OP},
     operation::{GenericOperation, OperationImpl},
     operation_type::{OperationTypeBuilder, OperationTypeUID},
     types::{FunctionType, Type},
+    value::Value,
+};
+use sir_interpreter::{
+    interfaces::{
+        InterpretableOp, InterpretableOpInterfaceImpl, InterpretableOpInterfaceImplWrapper,
+    },
+    interpreter::SIRInterpreter,
 };
 use sir_low_level::{
     interfaces::{
@@ -196,7 +204,7 @@ impl<'a> ModuleOp<'a> {
 // @+attr StringAttr<"symbol_name">
 // @+attr FunctionTypeAttr<"function_type">
 // @+block "body"
-// @interfaces ConditionallyLowLevelOp
+// @interfaces [ConditionallyLowLevelOp, SymbolOp, InterpretableOp]
 // @verifier
 // @custom_print_parse
 
@@ -330,6 +338,63 @@ impl OpInterfaceBuilder for FunctionOpConditionallyLowLevelOpInterfaceImpl {
     }
 }
 
+// Wrapper struct for the SymbolOp interface implementation.
+#[derive(Default)]
+pub struct FunctionOpSymbolOpInterfaceImpl;
+
+impl SymbolOpInterfaceImpl for FunctionOpSymbolOpInterfaceImpl {
+    fn get_symbol_name<'a>(&self, ctx: &'a IRContext, data: &'a OperationData) -> &'a str {
+        GenericOperation::make_from_data(ctx, data)
+            .cast::<FunctionOp>()
+            .unwrap()
+            .get_symbol_name()
+    }
+    fn get_symbol_type<'a>(&self, ctx: &'a IRContext, data: &'a OperationData) -> &'a Type {
+        GenericOperation::make_from_data(ctx, data)
+            .cast::<FunctionOp>()
+            .unwrap()
+            .get_symbol_type()
+    }
+}
+
+// Interface builder for SymbolOp interface.
+impl OpInterfaceBuilder for FunctionOpSymbolOpInterfaceImpl {
+    type InterfaceObjectType = SymbolOp<'static>;
+
+    fn build_interface_object() -> Box<dyn OpInterfaceWrapper + 'static> {
+        let wrapper = SymbolOpInterfaceImplWrapper::new(Box::new(Self));
+        Box::new(wrapper)
+    }
+}
+
+// Wrapper struct for the InterpretableOp interface implementation.
+#[derive(Default)]
+pub struct FunctionOpInterpretableOpInterfaceImpl;
+
+impl InterpretableOpInterfaceImpl for FunctionOpInterpretableOpInterfaceImpl {
+    fn interpret<'a>(
+        &self,
+        ctx: &'a IRContext,
+        data: &'a OperationData,
+        interpreter: &mut SIRInterpreter,
+    ) {
+        GenericOperation::make_from_data(ctx, data)
+            .cast::<FunctionOp>()
+            .unwrap()
+            .interpret(interpreter)
+    }
+}
+
+// Interface builder for InterpretableOp interface.
+impl OpInterfaceBuilder for FunctionOpInterpretableOpInterfaceImpl {
+    type InterfaceObjectType = InterpretableOp<'static>;
+
+    fn build_interface_object() -> Box<dyn OpInterfaceWrapper + 'static> {
+        let wrapper = InterpretableOpInterfaceImplWrapper::new(Box::new(Self));
+        Box::new(wrapper)
+    }
+}
+
 impl<'a> FunctionOp<'a> {
     pub fn verify(&self, diagnostics: &mut DiagnosticsEmitter) {
         ir_checks::verif_inputs_count(diagnostics, self.generic(), 0);
@@ -359,6 +424,8 @@ fn register_function_op(ctx: &mut IRContext) {
     infos.set_builtin_interface::<FunctionOpBuiltinOpInterfaceImpl>();
     infos.add_interface::<FunctionOpBuiltinOpInterfaceImpl>();
     infos.add_interface::<FunctionOpConditionallyLowLevelOpInterfaceImpl>();
+    infos.add_interface::<FunctionOpSymbolOpInterfaceImpl>();
+    infos.add_interface::<FunctionOpInterpretableOpInterfaceImpl>();
     ctx.register_operation(infos.build());
 }
 
@@ -518,6 +585,43 @@ impl<'a> FunctionOp<'a> {
     }
 }
 
+// SymbolOp interface implementation
+impl<'a> FunctionOp<'a> {
+    pub fn get_symbol_type(&self) -> &'a Type {
+        self.get_attr(FUNCTION_ATTR_FUNCTION_TYPE)
+            .expect("Missing `function_type` attribute")
+            .cast::<TypeAttr>()
+            .expect("`function_type` attribute must be a Type")
+            .val()
+    }
+}
+
+// InterpretableOp interface implementation.
+impl<'a> FunctionOp<'a> {
+    pub fn interpret(&self, interpreter: &mut SIRInterpreter) {
+        // Open a new scope.
+        interpreter.open_values_scope();
+
+        // Prepare the inputs.
+        let inputs_attrs = interpreter.take_function_inputs();
+        let block = self.get_body();
+        if inputs_attrs.len() != block.get_num_operands() {
+            panic!(
+                "Invalid call to function `{}`: expected {} inputs, but got {}",
+                self.get_symbol_name(),
+                block.get_num_operands(),
+                inputs_attrs.len()
+            );
+        }
+        for (input_val, input_attr) in block.get_operands().zip(inputs_attrs) {
+            interpreter.assign_value(input_val, input_attr);
+        }
+
+        // Set the executor to the start of the function.
+        interpreter.set_pc_to_op(block.get_ops().next().unwrap().as_id());
+    }
+}
+
 /////////////////////////////////////////////////////////////////////////
 // ReturnOp implementation
 /////////////////////////////////////////////////////////////////////////
@@ -526,6 +630,7 @@ impl<'a> FunctionOp<'a> {
 // @opname "return"
 // @+input VariadicValue<"returns">
 // @tags ["TAG_TERMINATOR_OP", "TAG_LOW_LEVEL_OP"]
+// @interfaces [InterpretableOp]
 // @verifier
 // @custom_print_parse
 
@@ -611,6 +716,34 @@ impl OpInterfaceBuilder for ReturnOpBuiltinOpInterfaceImpl {
     }
 }
 
+// Wrapper struct for the InterpretableOp interface implementation.
+#[derive(Default)]
+pub struct ReturnOpInterpretableOpInterfaceImpl;
+
+impl InterpretableOpInterfaceImpl for ReturnOpInterpretableOpInterfaceImpl {
+    fn interpret<'a>(
+        &self,
+        ctx: &'a IRContext,
+        data: &'a OperationData,
+        interpreter: &mut SIRInterpreter,
+    ) {
+        GenericOperation::make_from_data(ctx, data)
+            .cast::<ReturnOp>()
+            .unwrap()
+            .interpret(interpreter)
+    }
+}
+
+// Interface builder for InterpretableOp interface.
+impl OpInterfaceBuilder for ReturnOpInterpretableOpInterfaceImpl {
+    type InterfaceObjectType = InterpretableOp<'static>;
+
+    fn build_interface_object() -> Box<dyn OpInterfaceWrapper + 'static> {
+        let wrapper = InterpretableOpInterfaceImplWrapper::new(Box::new(Self));
+        Box::new(wrapper)
+    }
+}
+
 impl<'a> ReturnOp<'a> {
     pub fn verify(&self, diagnostics: &mut DiagnosticsEmitter) {
         ir_checks::verif_outputs_count(diagnostics, self.generic(), 0);
@@ -629,6 +762,7 @@ fn register_return_op(ctx: &mut IRContext) {
     infos.set_builtin_interface::<ReturnOpBuiltinOpInterfaceImpl>();
     infos.set_tags(&[TAG_TERMINATOR_OP, TAG_LOW_LEVEL_OP]);
     infos.add_interface::<ReturnOpBuiltinOpInterfaceImpl>();
+    infos.add_interface::<ReturnOpInterpretableOpInterfaceImpl>();
     ctx.register_operation(infos.build());
 }
 
@@ -743,6 +877,235 @@ impl<'a> ReturnOp<'a> {
     }
 }
 
+// InterpretableOp interface implementation.
+impl<'a> ReturnOp<'a> {
+    pub fn interpret(&self, interpreter: &mut SIRInterpreter) {
+        // Assign the outputs.
+        let outputs: Vec<Attribute> = self
+            .get_inputs()
+            .map(|x| interpreter.get_value(x).clone())
+            .collect();
+        interpreter.set_function_outputs(outputs);
+
+        // Return from the function.
+        interpreter.pop_callstack();
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////
+// ConstantOp implementation
+/////////////////////////////////////////////////////////////////////////
+
+// @TODO[I5][SIR-FUNC]: Consider moving GenericConstantOp to another lib.
+// @TODO[I6][SIR-FUNC]: Replace math.constant with generic.constant.
+
+// @XGENDEF:SIROp GenericConstantOp
+// @opname "generic.constant"
+// @+attr AnyAttr<"value">
+// @+output ValueWithPred<"result", PredMatchTypeOfAttr<"value">, "same type than value">
+// @tags ["TAG_PURE_OP", "TAG_LOW_LEVEL_OP"]
+// @interfaces [ConstantOp]
+// @custom_print_parse
+// @constant_builder
+
+// @XGENBEGIN
+
+// Code automatically generated by sir_core/scripts/xgen.py
+
+const GENERIC_CONSTANT_OPNAME: &'static str = "generic.constant";
+const GENERIC_CONSTANT_TYPE_UID: OperationTypeUID =
+    OperationTypeUID::make_from_opname(GENERIC_CONSTANT_OPNAME);
+
+pub struct GenericConstantOp<'a> {
+    ctx: &'a IRContext,
+    data: &'a OperationData,
+}
+
+impl<'a> OperationImpl<'a> for GenericConstantOp<'a> {
+    fn make_from_data(ctx: &'a IRContext, data: &'a OperationData) -> Self {
+        Self { ctx, data }
+    }
+
+    fn get_op_data(&self) -> &'a OperationData {
+        self.data
+    }
+
+    fn get_context(&self) -> &'a IRContext {
+        self.ctx
+    }
+
+    fn get_op_type_uid() -> OperationTypeUID {
+        GENERIC_CONSTANT_TYPE_UID
+    }
+}
+
+const GENERIC_CONSTANT_ATTR_VALUE: &'static str = "value";
+
+impl<'a> GenericConstantOp<'a> {
+    pub fn get_result(&self) -> Value<'a> {
+        self.get_output(0)
+    }
+
+    pub fn get_value(&self) -> &'a Attribute {
+        self.get_attr(GENERIC_CONSTANT_ATTR_VALUE)
+            .expect("Missing `value` attribute")
+    }
+}
+
+// Wrapper struct for the BuiltinOp interface implementation.
+#[derive(Default)]
+pub struct GenericConstantOpBuiltinOpInterfaceImpl;
+
+impl BuiltinOpInterfaceImpl for GenericConstantOpBuiltinOpInterfaceImpl {
+    fn verify<'a>(
+        &self,
+        ctx: &'a IRContext,
+        data: &'a OperationData,
+        diagnostics: &mut DiagnosticsEmitter,
+    ) {
+        GenericOperation::make_from_data(ctx, data)
+            .cast::<GenericConstantOp>()
+            .unwrap()
+            .verify(diagnostics)
+    }
+    fn custom_print<'a>(
+        &self,
+        ctx: &'a IRContext,
+        data: &'a OperationData,
+        printer: &mut IRPrinter,
+    ) -> Result<(), std::io::Error> {
+        GenericOperation::make_from_data(ctx, data)
+            .cast::<GenericConstantOp>()
+            .unwrap()
+            .custom_print(printer)
+    }
+    fn custom_parse(
+        &self,
+        parser: &mut IRParser,
+        ctx: &mut IRContext,
+        st: &mut OperationParserState,
+    ) -> Option<()> {
+        GenericConstantOp::custom_parse(parser, ctx, st)
+    }
+    fn clone(&self) -> BuiltinOpInterfaceImplWrapper {
+        GenericConstantOp::clone()
+    }
+}
+
+// Interface builder for BuiltinOp interface.
+impl OpInterfaceBuilder for GenericConstantOpBuiltinOpInterfaceImpl {
+    type InterfaceObjectType = BuiltinOp<'static>;
+
+    fn build_interface_object() -> Box<dyn OpInterfaceWrapper + 'static> {
+        let wrapper = BuiltinOpInterfaceImplWrapper::new(Box::new(Self));
+        Box::new(wrapper)
+    }
+}
+
+// Wrapper struct for the ConstantOp interface implementation.
+#[derive(Default)]
+pub struct GenericConstantOpConstantOpInterfaceImpl;
+
+impl ConstantOpInterfaceImpl for GenericConstantOpConstantOpInterfaceImpl {
+    fn get_value<'a>(&self, ctx: &'a IRContext, data: &'a OperationData) -> &'a Attribute {
+        GenericOperation::make_from_data(ctx, data)
+            .cast::<GenericConstantOp>()
+            .unwrap()
+            .get_value()
+    }
+}
+
+// Interface builder for ConstantOp interface.
+impl OpInterfaceBuilder for GenericConstantOpConstantOpInterfaceImpl {
+    type InterfaceObjectType = ConstantOp<'static>;
+
+    fn build_interface_object() -> Box<dyn OpInterfaceWrapper + 'static> {
+        let wrapper = ConstantOpInterfaceImplWrapper::new(Box::new(Self));
+        Box::new(wrapper)
+    }
+}
+
+impl<'a> GenericConstantOp<'a> {
+    pub fn verify(&self, diagnostics: &mut DiagnosticsEmitter) {
+        ir_checks::verif_inputs_count(diagnostics, self.generic(), 0);
+        ir_checks::verif_has_attr(diagnostics, self.generic(), GENERIC_CONSTANT_ATTR_VALUE);
+        ir_checks::verif_outputs_count(diagnostics, self.generic(), 1);
+        ir_checks::verif_io_type(
+            diagnostics,
+            self.generic(),
+            false,
+            0,
+            "result",
+            |ty| ir_checks::pred_match_type_of_attr(&self.generic(), ty, "value"),
+            "same type than value",
+        );
+        ir_checks::verif_blocks_count(diagnostics, self.generic(), 0);
+    }
+    pub fn clone() -> BuiltinOpInterfaceImplWrapper {
+        BuiltinOpInterfaceImplWrapper::new(Box::new(GenericConstantOpBuiltinOpInterfaceImpl))
+    }
+}
+
+fn register_generic_constant_op(ctx: &mut IRContext) {
+    let mut infos = OperationTypeBuilder::new();
+    infos.set_opname(GENERIC_CONSTANT_OPNAME);
+    infos.set_impl::<GenericConstantOp>();
+    infos.set_builtin_interface::<GenericConstantOpBuiltinOpInterfaceImpl>();
+    infos.set_tags(&[TAG_PURE_OP, TAG_LOW_LEVEL_OP]);
+    infos.add_interface::<GenericConstantOpBuiltinOpInterfaceImpl>();
+    infos.add_interface::<GenericConstantOpConstantOpInterfaceImpl>();
+    ctx.register_operation(infos.build());
+}
+
+// @XGENEND
+
+impl<'a> GenericConstantOp<'a> {
+    // Op Builders
+    pub fn build(val: Attribute) -> OpImplBuilderState<Self> {
+        let mut st = OpImplBuilderState::make();
+        st.set_inputs(vec![]);
+        st.set_outputs_types(vec![val
+            .get_type()
+            .expect("val must be a typed attr")
+            .clone()]);
+        st.set_attr(GENERIC_CONSTANT_ATTR_VALUE, val);
+        st
+    }
+
+    pub fn build_constant(val: Attribute) -> Option<RawOpBuilder> {
+        let mut st = RawOpBuilder::new();
+        st.set_op_type::<GenericConstantOp>();
+        st.set_inputs(vec![]);
+        st.set_outputs_types(vec![val
+            .get_type()
+            .expect("val must be a typed attr")
+            .clone()]);
+        st.set_attr(GENERIC_CONSTANT_ATTR_VALUE, val);
+        Some(st)
+    }
+
+    // BuiltinOp interface implementation.
+    pub fn custom_print(&self, printer: &mut IRPrinter) -> Result<(), std::io::Error> {
+        printer.print_op_results_and_opname(self.generic(), true)?;
+
+        // Print the attribute
+        printer.print(self.get_value())
+    }
+
+    pub fn custom_parse(
+        parser: &mut IRParser,
+        _ctx: &mut IRContext,
+        st: &mut OperationParserState,
+    ) -> Option<()> {
+        // Parse the val attribute.
+        let val: Attribute = parser.parse()?;
+        let ty = val.get_type().expect("`val` must be a typed attr").clone();
+        st.set_attr(GENERIC_CONSTANT_ATTR_VALUE, val);
+        st.set_outputs_types(vec![ty]);
+        Some(())
+    }
+}
+
 /////////////////////////////////////////////////////////////////////////
 // FuncOps Registrations
 /////////////////////////////////////////////////////////////////////////
@@ -752,6 +1115,8 @@ pub fn register_func_ops(ctx: &mut IRContext) {
     register_module_op(ctx);
     register_function_op(ctx);
     register_return_op(ctx);
+    register_generic_constant_op(ctx);
+    ctx.register_constant_builder(GenericConstantOp::build_constant);
 }
 
 // @XGENEND

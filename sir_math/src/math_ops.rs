@@ -30,7 +30,7 @@ use sir_core::{
 // @+attr ScalarAttr<"value">
 // @+output ValueWithPred<"result", PredMatchTypeOfAttr<"value">, "same type than value">
 // @tags ["TAG_PURE_OP"]
-// @interfaces ConstantOp
+// @interfaces [ConstantOp]
 // @custom_print_parse
 
 // @XGENBEGIN

@@ -1,0 +1,17 @@
+
+// XTEST: sir-opt --canonicalize --cse
+// XTEST-OUTPUT-CHECK
+
+module {
+
+// CHECK: function @add() -> (i32)
+// CHECK-NEXT: %0 = generic.constant 3: i32
+// CHECK-NEXT: return %0 : i32
+function @add() -> (i32) {
+    %0 = generic.constant 1 : i32
+    %1 = generic.constant 2 : i32
+    %2 = lir.iadd %0, %1 : i32
+    return %2 : i32
+}
+
+}

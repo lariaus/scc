@@ -2,6 +2,7 @@ use diagnostics::diagnostics::DiagnosticsEmitter;
 use parse::lexer::TokenValue;
 use parse::parser::Parser;
 use sir_core::{
+    attributes::{Attribute, AttributeSubClass, IntegerAttr},
     ir_builder::OpImplBuilderState,
     ir_context::IRContext,
     ir_data::{OperationData, ValueID},
@@ -17,6 +18,10 @@ use sir_core::{
     operation_type::{OperationTypeBuilder, OperationTypeUID},
     types::Type,
     value::Value,
+};
+use sir_interpreter::interfaces::{
+    InterpretableComputeOp, InterpretableComputeOpInterfaceImpl,
+    InterpretableComputeOpInterfaceImplWrapper,
 };
 use sir_low_level::{low_level_types, tags::TAG_LOW_LEVEL_OP};
 
@@ -52,6 +57,7 @@ use sir_low_level::{low_level_types, tags::TAG_LOW_LEVEL_OP};
 // @+input LIRIntScalarValue<"rhs">
 // @+output LIRIntScalarValue<"result">
 // @tags ["TAG_PURE_OP", "TAG_LOW_LEVEL_OP"]
+// @interfaces [InterpretableComputeOp]
 // @+mod SameInputsAndOutputsTypes
 // @custom_print_parse
 
@@ -150,6 +156,40 @@ impl OpInterfaceBuilder for LIRIAddOpBuiltinOpInterfaceImpl {
     }
 }
 
+// Wrapper struct for the InterpretableComputeOp interface implementation.
+#[derive(Default)]
+pub struct LIRIAddOpInterpretableComputeOpInterfaceImpl;
+
+impl InterpretableComputeOpInterfaceImpl for LIRIAddOpInterpretableComputeOpInterfaceImpl {
+    fn interpret<'a>(
+        &self,
+        ctx: &'a IRContext,
+        data: &'a OperationData,
+        inputs: &[&Attribute],
+    ) -> Vec<Attribute> {
+        GenericOperation::make_from_data(ctx, data)
+            .cast::<LIRIAddOp>()
+            .unwrap()
+            .interpret(inputs)
+    }
+    fn fold_with_canonicalize<'a>(&self, ctx: &'a IRContext, data: &'a OperationData) -> bool {
+        GenericOperation::make_from_data(ctx, data)
+            .cast::<LIRIAddOp>()
+            .unwrap()
+            .fold_with_canonicalize()
+    }
+}
+
+// Interface builder for InterpretableComputeOp interface.
+impl OpInterfaceBuilder for LIRIAddOpInterpretableComputeOpInterfaceImpl {
+    type InterfaceObjectType = InterpretableComputeOp<'static>;
+
+    fn build_interface_object() -> Box<dyn OpInterfaceWrapper + 'static> {
+        let wrapper = InterpretableComputeOpInterfaceImplWrapper::new(Box::new(Self));
+        Box::new(wrapper)
+    }
+}
+
 impl<'a> LIRIAddOp<'a> {
     pub fn verify(&self, diagnostics: &mut DiagnosticsEmitter) {
         ir_checks::verif_inputs_count(diagnostics, self.generic(), 2);
@@ -196,6 +236,7 @@ fn register_l_i_r_i_add_op(ctx: &mut IRContext) {
     infos.set_builtin_interface::<LIRIAddOpBuiltinOpInterfaceImpl>();
     infos.set_tags(&[TAG_PURE_OP, TAG_LOW_LEVEL_OP]);
     infos.add_interface::<LIRIAddOpBuiltinOpInterfaceImpl>();
+    infos.add_interface::<LIRIAddOpInterpretableComputeOpInterfaceImpl>();
     ctx.register_operation(infos.build());
 }
 
@@ -266,6 +307,44 @@ impl<'a> LIRIAddOp<'a> {
         st.set_inputs_types(inputs_types);
         st.set_outputs_types(outputs_types);
         Some(())
+    }
+
+    // InterpretableComputeOp implementation
+
+    pub fn interpret(&self, inputs: &[&Attribute]) -> Vec<Attribute> {
+        assert_eq!(inputs.len(), 2);
+        let lhs = inputs[0].cast::<IntegerAttr>().unwrap();
+        let rhs = inputs[1].cast::<IntegerAttr>().unwrap();
+
+        let width = lhs.bitwidth();
+
+        // Do a wrapping add with the right types.
+
+        let res = if width == 8 {
+            let lhs = lhs.raw_val() as u8;
+            let rhs = rhs.raw_val() as u8;
+            u8::wrapping_add(lhs, rhs) as u64
+        } else if width == 16 {
+            let lhs = lhs.raw_val() as u16;
+            let rhs = rhs.raw_val() as u16;
+            u16::wrapping_add(lhs, rhs) as u64
+        } else if width == 32 {
+            let lhs = lhs.raw_val() as u32;
+            let rhs = rhs.raw_val() as u32;
+            u32::wrapping_add(lhs, rhs) as u64
+        } else if width == 64 {
+            let lhs = lhs.raw_val() as u64;
+            let rhs = rhs.raw_val() as u64;
+            u64::wrapping_add(lhs, rhs) as u64
+        } else {
+            panic!("unsupported bitwdith `{}`", width);
+        };
+
+        vec![IntegerAttr::new(res, lhs.get_type().unwrap().clone())]
+    }
+
+    pub fn fold_with_canonicalize(&self) -> bool {
+        true
     }
 }
 

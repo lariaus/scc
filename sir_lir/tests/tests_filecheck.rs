@@ -3,7 +3,9 @@ use sir_core::{
     sir_opt_runner::SIROptRunner,
 };
 use sir_func::func_ops::register_func_ops;
+use sir_interpreter::transforms::register_interpreter_transforms;
 use sir_lir::lir_ops::register_lir_ops;
+use sir_runner::runner_test::{SIRRunnerTestInterface, SIRRunnerTestRunner};
 use xtest::{
     test_driver::{OutputTestWriter, TestDriver, TestRunner},
     test_file::TestConfig,
@@ -19,6 +21,7 @@ fn register_ops(ctx: &mut IRContext) {
 
 fn setup_compiler(cs: &mut CompilerSetup) {
     register_core_passes(cs);
+    register_interpreter_transforms(cs);
 }
 
 impl TestRunner for SIROptTestRunner {
@@ -44,9 +47,19 @@ impl TestRunner for SIROptTestRunner {
     }
 }
 
+#[derive(Default)]
+struct SIRRunnerTestImpl;
+
+impl SIRRunnerTestInterface for SIRRunnerTestImpl {
+    fn setup_context(&self, ctx: &mut IRContext) {
+        register_ops(ctx);
+    }
+}
+
 fn get_driver() -> TestDriver {
     let mut driver = TestDriver::new();
     driver.add_runner::<SIROptTestRunner>();
+    driver.add_runner::<SIRRunnerTestRunner<SIRRunnerTestImpl>>();
     driver
 }
 
@@ -65,4 +78,14 @@ fn run_xtest(path: &str) {
 #[test]
 fn test_ops_iadd_verifier() {
     run_xtest("ops/iadd_verifier.sir");
+}
+
+#[test]
+fn test_transforms_fold_elementwise() {
+    run_xtest("transforms/fold_elementwise.sir");
+}
+
+#[test]
+fn test_runner_elementwise() {
+    run_xtest("runner/elementwise.sir");
 }

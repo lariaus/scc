@@ -61,6 +61,51 @@
 - [DONE] Add transforms to legalize math ops to lir_ops.
 - [DONE] Add legalization unit test for function op (return si32 operand) 
 - [DONE] Add legalization unit test for math (si32 add op).
+- [DONE] Create sir_interpreter lib with SIRInterpreter class.
+- [DONE] Create InterpretableComputeOp interface for simple ops that just take a list of attribute as input, and return a list of attributes as output.
+- [DONE] Add a method canCanonicalizeOp that would use the canonicalize pass to fold InterpretableComputeOp ops with constants inputs. 
+- [DONE] Add unit test for the canonicalize method of lir.
+- [DONE] Create InterpretableOp for ops with control flow, that access the whole Interpreter object.
+- [DONE] Create sir_runner lib that can be used somehow through unit tests to run and check functions (through many means, interpreter things) 
+- [DONE] Create sir-runner binary to run any program through sir.
+- [DONE] Add unit test running the interpreter.
+- Add a pass to lower CAST to SIR
+- Add unit tests for the lowering for a basic add.
+- Add some new library with pipelines to lower any SIR program to LIR.
+- Add unit tests for the full lowering.
+- Add a new binary scc-runner that can run a C program.
+- Add unit tests for scc-runner to run a basic add through the interpreter.
+- Add a new instruction selection mechanism and pass.
+- Add pass to do instruction selection to Apple-ARM.
+- Add unit test for a basic add.
+- Add unit test for a basic add (stack values).
+- Add new mechanism to represent registers and handle register allocation.
+- Add pass to do register allocation for Apple-ARM.
+- Add unit test for a basic add.
+- Add unit test for a basic add (stack values).
+- Add new mechanism to emit assembly code.
+- Add new library compiler_utils that can be used to call the assembler / compiler / linker / etc ...
+- Add new library sir_compile that can compile a final SIR (no passes) to assembly or binary file
+- Add new library sir_translate that can do translation from SIR (no passes) to Assembly or binary (call assembler / linker / etc)
+- Add new binary sir-translate using sir_translate
+- Update sir_runner library to support compile + run program with sir_compile.
+- Update sir-runner binary to support run.
+- Add a new pipeline / library to go from LIR to Assembly SIR (and support Arm-Apple).
+- Add unit test for a basic add.
+- Add unit test for a basic add (stack values).
+- Add a new system to run tests with sir-runner going through SIR to LIR then LIR to ASM.
+- Add unit test for a basic add.
+- Add unit test for a basic add (stack values).
+- Update binary scc-runner to go through the compiler.
+- Update scc-runner test system to go through the compiler.
+- Add unit test for a basic add.
+- Update scc binary to support taking a source c file and emitting AST IR.
+- Update scc binary to support taking a source c file and emitting high level SIR.
+- Update scc binary to support taking a source c file and emitting LIR.
+- Update scc binary to support taking a source c file and ASM SIR.
+- Update scc binary to support taking a source c file and emitting ASM file.
+- Update scc binary to support taking a source c file and emitting object binary.
+- Update scc binary to support taking a source c file and emitting binary file.
 - ...
 
 #### P1 Features #####
@@ -90,3 +135,9 @@ Divide IRContent between IR Nodes and Op Infos:
 
 - @TODO[I4][SIR-CORE]: Deleting ops in order won't work if the block is in an invalid state.
     Instead we should delete all ops at once and update the users if they are not in this block.
+
+- @TODO[I5][SIR-FUNC]: Consider moving GenericConstantOp to another lib.
+
+- @TODO[I6][SIR-FUNC]: Replace math.constant with generic.constant.
+
+- @TODO[I7][XTEST]: Avoid cloning all annotations for each TestConfig and just pass them around.

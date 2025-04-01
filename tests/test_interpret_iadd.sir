@@ -1,0 +1,10 @@
+// cargo run --bin sir-runner -- "tests/test_interpret_iadd.sir" --function "foo" --inputs 8 13 --mode interpreter
+
+module {
+
+function @foo(%arg0: i32, %arg1: i32) -> (i32) {
+    %0 = lir.iadd %arg0, %arg1 : i32
+    return %0 : i32
+}
+
+}

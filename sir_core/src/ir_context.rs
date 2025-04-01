@@ -3,12 +3,13 @@ use std::collections::{HashMap, HashSet};
 use iostreams::location::Location;
 
 use crate::{
-    attributes::DictAttr,
+    attributes::{Attribute, DictAttr, StringAttr},
     block::Block,
     ir_data::{
         BlockData, BlockID, BlockOperand, OperationData, OperationID, OperationOutput, ValueData,
         ValueID,
     },
+    ir_printer::IRPrintableObject,
     operation::{GenericOperation, OperationImpl},
     operation_type::{OperationTypeInfos, OperationTypeRef, OperationTypeUID},
     types::Type,
@@ -28,6 +29,9 @@ pub struct IRContext {
     _data_op_next: usize,
     _data_ops_types: HashMap<OperationTypeUID, OperationTypeInfos>,
     _opname_to_uid_map: HashMap<&'static str, OperationTypeUID>,
+
+    // Registered builders for ConstantOp.
+    _registered_constant_builders: Vec<Box<dyn Fn(Attribute) -> Option<RawOpBuilder>>>,
 }
 
 impl IRContext {
@@ -41,6 +45,7 @@ impl IRContext {
             _data_op_next: 0,
             _data_ops_types: HashMap::new(),
             _opname_to_uid_map: HashMap::new(),
+            _registered_constant_builders: Vec::new(),
         }
     }
 
@@ -131,6 +136,43 @@ impl IRContext {
         uid
     }
 
+    // Build a new operation from a builder.
+    pub(crate) fn _make_operation_from_builder(
+        &mut self,
+        loc: Location,
+        builder: RawOpBuilder,
+    ) -> OperationID {
+        let op_type = OperationTypeRef::Registered(builder.op_type_uid.expect("Missing type_uid"));
+        let inputs = builder.inputs.unwrap_or_default();
+        let outputs_types = builder.outputs_types.unwrap_or_default();
+        let attrs = if let Some(attrs_vals) = builder.attrs_vals {
+            DictAttr::new(attrs_vals)
+        } else {
+            builder.attrs_dict.unwrap_or(DictAttr::empty())
+        };
+        let blocks = builder.blocks.unwrap_or_default();
+        self._make_operation(loc, op_type, inputs, outputs_types, attrs, blocks)
+    }
+
+    // Build a constant from an OperationID.
+    // Use the registered constant builders.
+    pub(crate) fn _make_operation_from_constant(
+        &mut self,
+        loc: Location,
+        val: Attribute,
+    ) -> OperationID {
+        for builder in self._registered_constant_builders.iter().rev() {
+            if let Some(builder) = builder(val.clone()) {
+                return self._make_operation_from_builder(loc, builder);
+            }
+        }
+
+        panic!(
+            "No registered op builder compatible with `{}`",
+            val.to_string_repr()
+        );
+    }
+
     // Get a Operationdata ref from a OperationID.
     pub fn get_op_data(&self, uid: OperationID) -> &OperationData {
         match self._data_ops.get(&uid) {
@@ -197,6 +239,14 @@ impl IRContext {
         );
         self._opname_to_uid_map.insert(opname, uid);
         self._data_ops_types.insert(uid, infos);
+    }
+
+    // Register a constant builder from a function.
+    pub fn register_constant_builder<F: Fn(Attribute) -> Option<RawOpBuilder> + 'static>(
+        &mut self,
+        builder: F,
+    ) {
+        self._registered_constant_builders.push(Box::new(builder));
     }
 
     // Get the registered OperationTypeInfos from its uid.
@@ -520,5 +570,87 @@ impl IRContext {
                 self.replace_all_uses_of_value(old_arg, new_arg);
             }
         }
+    }
+}
+
+// Helper class used to build a new operation.
+// Similar to OpBuilderState, but maybe better / worst ?
+pub struct RawOpBuilder {
+    op_type_uid: Option<OperationTypeUID>,
+    unregistered_opname: Option<String>,
+    inputs: Option<Vec<ValueID>>,
+    outputs_types: Option<Vec<Type>>,
+    attrs_dict: Option<DictAttr>,
+    attrs_vals: Option<Vec<(Attribute, Attribute)>>,
+    blocks: Option<Vec<BlockID>>,
+}
+
+impl RawOpBuilder {
+    pub fn new() -> Self {
+        Self {
+            op_type_uid: None,
+            unregistered_opname: None,
+            inputs: None,
+            outputs_types: None,
+            attrs_dict: None,
+            attrs_vals: None,
+            blocks: None,
+        }
+    }
+
+    // Set the op type.
+    pub fn set_op_type<T: OperationImpl<'static>>(&mut self) {
+        self.set_op_type_uid(T::get_op_type_uid());
+    }
+
+    // Set the op type.
+    pub fn set_op_type_uid(&mut self, op_type_uid: OperationTypeUID) {
+        assert!(self.op_type_uid.is_none());
+        assert!(self.unregistered_opname.is_none());
+        self.op_type_uid = Some(op_type_uid);
+    }
+
+    // Set the opname of the operation (for unregistered op)
+    pub fn set_unregistered_opname<V: Into<String>>(&mut self, unregistered_opname: V) {
+        assert!(self.op_type_uid.is_none());
+        assert!(self.unregistered_opname.is_none());
+        self.unregistered_opname = Some(unregistered_opname.into());
+    }
+
+    // Set the inputs of the operation.
+    pub fn set_inputs<V: Into<Vec<ValueID>>>(&mut self, inputs: V) {
+        assert!(self.inputs.is_none());
+        self.inputs = Some(inputs.into());
+    }
+
+    // Set the outputs types of the operation.
+    pub fn set_outputs_types<V: Into<Vec<Type>>>(&mut self, outputs_types: V) {
+        assert!(self.outputs_types.is_none());
+        self.outputs_types = Some(outputs_types.into());
+    }
+
+    // Set the attrs dict
+    pub fn set_attrs_dict<V: Into<DictAttr>>(&mut self, attrs_dict: V) {
+        assert!(self.attrs_dict.is_none());
+        assert!(self.attrs_vals.is_none());
+        self.attrs_dict = Some(attrs_dict.into());
+    }
+
+    // Set an attr value.
+    pub fn set_attr<K: Into<String>, V: Into<Attribute>>(&mut self, key: K, val: V) {
+        assert!(self.attrs_dict.is_none());
+        if self.attrs_vals.is_none() {
+            self.attrs_vals = Some(Vec::new());
+        }
+        self.attrs_vals
+            .as_mut()
+            .unwrap()
+            .push((StringAttr::new(key.into()), val.into()));
+    }
+
+    // Set the blocks of the operation.
+    pub fn set_blocks<V: Into<Vec<BlockID>>>(&mut self, blocks: V) {
+        assert!(self.blocks.is_none());
+        self.blocks = Some(blocks.into());
     }
 }

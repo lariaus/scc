@@ -22,4 +22,14 @@ function @add_si32(%arg0: si32, %arg1: si32) -> (si32) {
     return %0 : si32
 }
 
+// CHECK: function @add_cst_si32(%arg0: i32) -> (i32)
+// CHECK-NEXT: %0 = generic.constant 1: i32
+// CHECK-NEXT: %1 = lir.iadd %arg0, %0 : i32
+// CHECK-NEXT: return %1 : i32
+function @add_cst_si32(%arg0: si32) -> (si32) {
+    %0 = generic.constant 1 : si32
+    %1 = math.iadd %arg0, %0 : si32
+    return %1 : si32
+}
+
 }

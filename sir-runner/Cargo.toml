@@ -1,0 +1,13 @@
+[package]
+name = "sir-runner"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+sir_core = { path = "../sir_core" }
+sir_func = { path = "../sir_func" }
+sir_lir = { path = "../sir_lir" }
+sir_runner = { path = "../sir_runner" }
+iostreams = { path = "../iostreams" }
+diagnostics = { path = "../diagnostics" }

@@ -58,6 +58,14 @@ Usage:
 cargo run --bin sir-opt -- -i sir_math/tests/test_iadd_i32.sir
 ```
 
+### sir_runner
+
+Test Library to run SIR programs (for now only the interpreter is supported).
+
+### sir-runner (binary)
+
+Binary to run SIR programs (for now only the interpreter is supported).
+
 ### xgen
 
 XGen is a python library used to generate rust code for all the op defs.

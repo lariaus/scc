@@ -87,6 +87,42 @@ impl<'a> Block<'a> {
         let op = self.data.parent()?;
         Some(self.ctx.get_generic_operation(op))
     }
+
+    // Find the op before `op` in the block.
+    // Panics if op not is block.
+    // Returns None if op is the first op of the block.
+    pub fn get_op_before(&self, op: GenericOperation<'a>) -> Option<GenericOperation<'a>> {
+        let idx = self
+            .data
+            .ops()
+            .iter()
+            .position(|other| *other == op.as_id())
+            .expect("Op not found");
+        let idx = if idx == 0 {
+            return None;
+        } else {
+            idx - 1
+        };
+        Some(self.ctx.get_generic_operation(self.data.ops()[idx]))
+    }
+
+    // Find the op after `op` in the block.
+    // Panics if op not is block.
+    // Returns None if op is the last op of the block.
+    pub fn get_op_after(&self, op: GenericOperation<'a>) -> Option<GenericOperation<'a>> {
+        let idx = self
+            .data
+            .ops()
+            .iter()
+            .position(|other| *other == op.as_id())
+            .expect("Op not found");
+        let idx = if idx + 1 == self.data.ops().len() {
+            return None;
+        } else {
+            idx + 1
+        };
+        Some(self.ctx.get_generic_operation(self.data.ops()[idx]))
+    }
 }
 
 impl<'a> From<Block<'a>> for BlockID {

@@ -4,6 +4,13 @@ use std::{
     io::{BufRead, BufReader},
 };
 
+// Represent an annotation message starting with `@XANNOT:`.
+#[derive(Debug, Clone)]
+pub struct TestAnnotation {
+    pub line_num: usize,
+    pub line: String,
+}
+
 // Contains all the data for a specific test in a file.
 #[derive(Debug, Clone)]
 pub struct TestConfig {
@@ -12,6 +19,7 @@ pub struct TestConfig {
     output_check_mode: bool,
     expected_ret: Option<i64>,
     command: Vec<String>,
+    annotations: Vec<TestAnnotation>,
 }
 
 impl TestConfig {
@@ -39,12 +47,18 @@ impl TestConfig {
     pub fn command(&self) -> &[String] {
         &self.command
     }
+
+    // Returns all the test annotations.
+    pub fn annotations(&self) -> &[TestAnnotation] {
+        &self.annotations
+    }
 }
 
 // Represent an xtest file.
 pub struct TestFile {
     path: String,
     tests: HashMap<String, TestConfig>,
+    annotations: Vec<TestAnnotation>,
 }
 
 impl TestFile {
@@ -53,6 +67,7 @@ impl TestFile {
         let mut res = Self {
             path: path.to_string(),
             tests: HashMap::new(),
+            annotations: Vec::new(),
         };
         res._parse_file();
         res
@@ -72,17 +87,26 @@ impl TestFile {
                 .expect(&format!("Failed to open XTEST test file `{}`", &self.path)),
         );
         let mut current_test = None;
-        for line in reader.lines() {
+        for (line_num, line) in reader.lines().enumerate() {
             let line = line.expect("Failed to read XTEST test file");
             if line.starts_with("// XTEST:") {
                 let cmd = &line[9..];
                 self._handle_xtest_directive(&mut current_test, cmd);
             } else if line.starts_with("// XTEST-OUTPUT-CHECK") {
                 self._handle_output_check_directive(&mut current_test);
+            } else if line.starts_with("// @XANNOT:") {
+                let annot = &line[11..];
+                self._handle_annot_directive(line_num + 1, annot);
             }
         }
 
         self._resolve_current_test(&mut current_test);
+
+        // Go through all tests and clone all annotations (they belong to all tests).
+        // @TODO[I7][XTEST]: Avoid cloning all annotations for each TestConfig and just pass them around.
+        for test in self.tests.values_mut() {
+            test.annotations.append(&mut self.annotations.clone());
+        }
     }
 
     fn _resolve_current_test(&mut self, current_test: &mut Option<TestConfig>) {
@@ -129,6 +153,7 @@ impl TestFile {
             output_check_mode: false,
             expected_ret: None,
             command: cmd,
+            annotations: Vec::new(),
         });
     }
 
@@ -137,6 +162,13 @@ impl TestFile {
             .as_mut()
             .expect("Can't use XTEST-OUTPUT-CHECK without a test");
         current_test.output_check_mode = true;
+    }
+
+    fn _handle_annot_directive(&mut self, line_num: usize, line: &str) {
+        self.annotations.push(TestAnnotation {
+            line_num,
+            line: line.to_owned(),
+        });
     }
 }
 
@@ -196,6 +228,7 @@ foo
                 "#,
         );
         let tst_file = TestFile::new(&tst_path);
+        assert!(tst_file.annotations.is_empty());
         assert_eq!(tst_file.tests.len(), 3);
 
         let test0 = tst_file.tests.get("test0").unwrap();
@@ -209,5 +242,47 @@ foo
         let test2 = tst_file.tests.get("123").unwrap();
         assert_eq!(test2.command(), vec!["none"]);
         assert!(test2.output_check_mode());
+    }
+
+    #[test]
+    fn multiple_tests_with_annotations() {
+        let tst_path = get_temp_file(
+            r#"
+// @XANNOT: bar 42
+// XTEST: @test0 runv1 foo bar
+// XTEST-OUTPUT-CHECK
+
+// @XANNOT: foo 8
+
+// XTEST: @hello hallo 3 4 5
+
+// XTEST: @123 none
+// XTEST-OUTPUT-CHECK
+
+// @XANNOT: nano 43
+
+                "#,
+        );
+        let tst_file = TestFile::new(&tst_path);
+        assert_eq!(tst_file.annotations.len(), 3);
+        assert_eq!(tst_file.tests.len(), 3);
+
+        let test0 = tst_file.tests.get("test0").unwrap();
+        assert_eq!(test0.command(), vec!["runv1", "foo", "bar"]);
+        assert!(test0.output_check_mode());
+        assert_eq!(test0.annotations().len(), 3);
+        assert_eq!(test0.annotations()[1].line, " foo 8");
+
+        let test1 = tst_file.tests.get("hello").unwrap();
+        assert_eq!(test1.command(), vec!["hallo", "3", "4", "5"]);
+        assert!(!test1.output_check_mode());
+        assert_eq!(test1.annotations().len(), 3);
+        assert_eq!(test0.annotations()[2].line, " nano 43");
+
+        let test2 = tst_file.tests.get("123").unwrap();
+        assert_eq!(test2.command(), vec!["none"]);
+        assert!(test2.output_check_mode());
+        assert_eq!(test2.annotations().len(), 3);
+        assert_eq!(test0.annotations()[0].line, " bar 42");
     }
 }

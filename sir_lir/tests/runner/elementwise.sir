@@ -1,0 +1,11 @@
+// XTEST: sir-runner --interpret
+
+module {
+
+// @XANNOT: exec "iadd_i32" --inputs 8 13 --outputs 21
+function @iadd_i32(%arg0: i32, %arg1: i32) -> (i32) {
+    %0 = lir.iadd %arg0, %arg1 : i32
+    return %0 : i32
+}
+
+}

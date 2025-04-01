@@ -1,4 +1,5 @@
 use sir_core::{
+    attributes::{Attribute, FloatAttr, IntegerAttr},
     type_converter::TypeConverter,
     types::{FloatType, FunctionType, IntegerType, Type},
 };
@@ -107,5 +108,27 @@ impl LowLevelTypeConverter {
         }
 
         Some(FunctionType::new(new_arguments, new_results))
+    }
+}
+
+pub fn convert_int_attr(attr: &IntegerAttr) -> Option<Attribute> {
+    // Keep the same value, but remove the sign
+    Some(IntegerAttr::new(
+        attr.raw_val(),
+        IntegerType::new(attr.bitwidth(), None),
+    ))
+}
+
+pub fn convert_float_attr(attr: &FloatAttr) -> Option<Attribute> {
+    // All float types are supported for now.
+    Some(Attribute::Float(attr.clone()))
+}
+
+// Try to convert an attribute to low-level
+pub fn convert_attr(attr: &Attribute) -> Option<Attribute> {
+    match attr {
+        Attribute::Int(integer_attr) => convert_int_attr(integer_attr),
+        Attribute::Float(float_attr) => convert_float_attr(float_attr),
+        _ => None,
     }
 }

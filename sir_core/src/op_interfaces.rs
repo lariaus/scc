@@ -11,6 +11,8 @@ use crate::{
     ir_printer::IRPrinter,
     operation::OperationImpl,
     operation_type::OperationTypeUID,
+    types::Type,
+    value::Value,
 };
 
 /////////////////////////////////////////////////////////////////////////
@@ -291,6 +293,112 @@ impl<'a> OperationImpl<'a> for ConstantOp<'a> {
 impl<'a> ConstantOp<'a> {
     pub fn get_value(&self) -> &'a Attribute {
         self.wrapper.dyn_impl.get_value(&self.ctx, &self.data)
+    }
+}
+
+// @XGENEND
+
+// Try to match a constant value.
+// Returns None if none if not a constant.
+pub fn match_constant<'a>(val: Value<'a>) -> Option<&'a Attribute> {
+    Some(
+        val.defining_op()?
+            .get_interface::<ConstantOp>()?
+            .get_value(),
+    )
+}
+
+/////////////////////////////////////////////////////////////////////////
+// SymbolOp Interface
+/////////////////////////////////////////////////////////////////////////
+
+// This interface can be implemented by any op which define / declare a symbol.
+
+// @XGENDEF:SIRInterface SymbolOp
+// @+method {{ get_symbol_name() -> "&'a str" }}
+// @+method {{ get_symbol_type() -> "&'a Type" }}
+
+// @XGENBEGIN
+// Unique identifier for the SymbolOp Interface
+const SYMBOL_OP_INTERFACE_UID: OpInterfaceUID =
+    OpInterfaceUID::make_from_interface_identifier("SymbolOp");
+
+// Interface Implementation for the SymbolOp interface.
+pub trait SymbolOpInterfaceImpl {
+    fn get_symbol_name<'a>(&self, ctx: &'a IRContext, data: &'a OperationData) -> &'a str;
+    fn get_symbol_type<'a>(&self, ctx: &'a IRContext, data: &'a OperationData) -> &'a Type;
+}
+
+// Wrapper object holding an implementation of the SymbolOp interface.
+pub struct SymbolOpInterfaceImplWrapper {
+    dyn_impl: Box<dyn SymbolOpInterfaceImpl>,
+}
+
+impl SymbolOpInterfaceImplWrapper {
+    pub fn new(dyn_impl: Box<dyn SymbolOpInterfaceImpl>) -> Self {
+        Self { dyn_impl }
+    }
+}
+
+impl OpInterfaceWrapper for SymbolOpInterfaceImplWrapper {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+//Definition of helper functions for the static methods of SymbolOp interface.
+impl SymbolOpInterfaceImplWrapper {}
+
+// Object to materialize an operation that implements the SymbolOp interface.
+pub struct SymbolOp<'a> {
+    wrapper: &'a SymbolOpInterfaceImplWrapper,
+    ctx: &'a IRContext,
+    data: &'a OperationData,
+}
+
+impl<'a> OpInterfaceObject<'a> for SymbolOp<'a> {
+    fn get_interface_uid() -> OpInterfaceUID {
+        SYMBOL_OP_INTERFACE_UID
+    }
+
+    fn make(
+        wrapper: &'a dyn OpInterfaceWrapper,
+        ctx: &'a IRContext,
+        data: &'a OperationData,
+    ) -> Self {
+        let wrapper = wrapper
+            .as_any()
+            .downcast_ref::<SymbolOpInterfaceImplWrapper>()
+            .unwrap();
+        Self { ctx, data, wrapper }
+    }
+}
+
+impl<'a> OperationImpl<'a> for SymbolOp<'a> {
+    fn make_from_data(_ctx: &'a IRContext, _data: &'a OperationData) -> Self {
+        panic!("Not supported for InterfaceOp")
+    }
+
+    fn get_op_data(&self) -> &'a OperationData {
+        &self.data
+    }
+
+    fn get_context(&self) -> &'a IRContext {
+        &self.ctx
+    }
+
+    fn get_op_type_uid() -> OperationTypeUID {
+        panic!("Cannot get the TypeUID of an InterfaceOp")
+    }
+}
+
+// Methods implementation for SymbolOp.
+impl<'a> SymbolOp<'a> {
+    pub fn get_symbol_name(&self) -> &'a str {
+        self.wrapper.dyn_impl.get_symbol_name(&self.ctx, &self.data)
+    }
+    pub fn get_symbol_type(&self) -> &'a Type {
+        self.wrapper.dyn_impl.get_symbol_type(&self.ctx, &self.data)
     }
 }
 

@@ -8,8 +8,10 @@ diagnostics = { path = "../diagnostics" }
 iostreams = { path = "../iostreams" }
 parse = { path = "../parse" }
 sir_core = { path = "../sir_core" }
+sir_interpreter = { path = "../sir_interpreter" }
 sir_low_level = { path = "../sir_low_level" }
 
 [dev-dependencies]
 sir_func = { path = "../sir_func" }
 xtest = { path = "../xtest" }
+sir_runner = { path = "../sir_runner" }

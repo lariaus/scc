@@ -1,0 +1,10 @@
+[package]
+name = "sir_interpreter"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+diagnostics = { path = "../diagnostics" }
+iostreams = { path = "../iostreams" }
+sir_core = { path = "../sir_core" }
+utils = { path = "../utils" }

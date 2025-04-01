@@ -1,3 +1,5 @@
+use diagnostics::diagnostics::{emit_error, ErrorOrSuccess};
+use sir_core::ir_printer::IRPrintableObject;
 use sir_core::pass_manager::PassRegistration;
 use sir_core::{
     compiler_setup::CompilerSetup,
@@ -7,8 +9,9 @@ use sir_core::{
     types::{FunctionType, Type},
 };
 use sir_low_level::legalize_pass::LegalizeToLowLevelPass;
+use sir_low_level::low_level_types::convert_attr;
 
-use crate::func_ops::FunctionOp;
+use crate::func_ops::{FunctionOp, GenericConstantOp};
 
 struct LegalizeFunctionOp;
 
@@ -67,9 +70,53 @@ impl OpTransform for LegalizeFunctionOp {
     }
 }
 
+struct LegalizeConstantOp;
+
+impl OpTransform for LegalizeConstantOp {
+    fn can_transform_op(&self, op: sir_core::operation::GenericOperation) -> bool {
+        op.isa::<GenericConstantOp>()
+    }
+
+    fn transform_op(
+        &self,
+        diagnostics: &mut diagnostics::diagnostics::DiagnosticsEmitter,
+        rewriter: &mut sir_core::ir_rewriter::IRRewriter,
+        op: sir_core::ir_data::OperationID,
+    ) -> ErrorOrSuccess {
+        let op = rewriter
+            .get_operation(op)
+            .cast::<GenericConstantOp>()
+            .unwrap();
+        let loc = op.loc();
+        let val = op.get_value();
+        let op = op.as_id();
+
+        // Convert the value.
+        let val = match convert_attr(val) {
+            Some(val) => val,
+            None => {
+                emit_error(
+                    diagnostics,
+                    &loc,
+                    format!("failed to convert attribute `{}`", val.to_string_repr()),
+                );
+                return Err(());
+            }
+        };
+
+        let new_op = rewriter
+            .create_op(loc, GenericConstantOp::build(val))
+            .as_id();
+
+        rewriter.replace_op_with_op(op, new_op);
+        Ok(())
+    }
+}
+
 /// Register all transforms related to func operations.
 pub fn register_func_transforms(cs: &mut CompilerSetup) {
     cs.register_extra_pass_transforms(LegalizeToLowLevelPass::get_pass_name(), |transforms| {
         transforms.add_transform(LegalizeFunctionOp);
+        transforms.add_transform(LegalizeConstantOp);
     });
 }

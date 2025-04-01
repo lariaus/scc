@@ -1,0 +1,12 @@
+
+// cargo run --bin sir-opt -- -i tests/test_add_cst_si32.sir --legalize-to-low-level --debug
+
+module {
+
+function @add(%arg0: si32) -> (si32) {
+    %0 = generic.constant 1 : si32
+    %1 = math.iadd %arg0, %0 : si32
+    return %1 : si32
+}
+
+}

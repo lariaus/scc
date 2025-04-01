@@ -67,6 +67,7 @@ class OpDefInfos:
         self.interfaces = []
         self.mods = []
         self.custom_print_parse = False
+        self.has_constant_builder = False
         self.has_custom_verifier = False
         self.extra_verif_lines = []
 
@@ -95,14 +96,13 @@ class OpDefInfos:
         assert isinstance(builtin_interface, InterfaceDefInfos)
         self.interfaces.append(builtin_interface)
         if "interfaces" in raw_data:
-            # TODO: Support multiple interfaces
-            interfaces_data = raw_data["interfaces"]
-            assert isinstance(interfaces_data, InterfaceDefInfos)
-            interfaces_data = raw_data["interfaces"]
-            self.interfaces.append(interfaces_data)
+            self.interfaces += raw_data["interfaces"]
+            for obj in self.interfaces:
+                assert isinstance(obj, InterfaceDefInfos)
 
         self.custom_print_parse = 'custom_print_parse' in raw_data
         self.has_custom_verifier = 'verifier' in raw_data
+        self.has_constant_builder = 'constant_builder' in raw_data
 
 
     @staticmethod
@@ -543,6 +543,8 @@ def generate_registered_ops(ofs, defs, file_defs, args):
         if name_snake_case.endswith('_op'):
             name_snake_case = name_snake_case[:-3]
         ofs.write('    register_{}_op(ctx);\n'.format(name_snake_case))
+        if op_def.has_constant_builder:
+            ofs.write('    ctx.register_constant_builder({}::build_constant);\n'.format(op_def.class_name))
     ofs.write('}\n\n')
 
 

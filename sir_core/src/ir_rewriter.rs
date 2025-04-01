@@ -1,6 +1,7 @@
 use iostreams::location::Location;
 
 use crate::{
+    attributes::Attribute,
     block::Block,
     ir_builder::{IRBuilder, InsertionPoint, OpBuilderState},
     ir_context::IRContext,
@@ -278,6 +279,29 @@ impl<'a> IRRewriter<'a> {
         b: OpBuilderState<'b, T>,
     ) -> T {
         let res = self.builder.create_op(loc, b);
+        if let Some(changes) = &mut self.updating_changes {
+            changes.created_ops.push(res.as_id());
+        }
+        res
+    }
+
+    // Materialize a constant from `val` and insert it at `pos`.
+    pub fn materialize_constant_at(
+        &mut self,
+        pos: InsertionPoint,
+        loc: Location,
+        val: Attribute,
+    ) -> GenericOperation {
+        let res = self.builder.materialize_constant_at(pos, loc, val);
+        if let Some(changes) = &mut self.updating_changes {
+            changes.created_ops.push(res.as_id());
+        }
+        res
+    }
+
+    // Materialize a constant from `val` and insert it at the current insertion point.
+    pub fn materialize_constant(&mut self, loc: Location, val: Attribute) -> GenericOperation {
+        let res = self.builder.materialize_constant(loc, val);
         if let Some(changes) = &mut self.updating_changes {
             changes.created_ops.push(res.as_id());
         }

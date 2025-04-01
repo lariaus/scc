@@ -186,6 +186,18 @@ pub trait OperationImpl<'a> {
         self.get_attrs_dict().get_with_str_key(name)
     }
 
+    // Find the op before `self` in the parent block.
+    // Returns None if op is the last op of the block.
+    fn get_op_before(&self) -> Option<GenericOperation<'a>> {
+        self.parent().unwrap().get_op_before(self.generic())
+    }
+
+    // Find the op after `self` in the parent block.
+    // Returns None if op is the last op of the block.
+    fn get_op_after(&self) -> Option<GenericOperation<'a>> {
+        self.parent().unwrap().get_op_after(self.generic())
+    }
+
     // Returns the number of blocks of the op.
     fn get_num_blocks(&self) -> usize {
         self.get_op_data().blocks().len()
