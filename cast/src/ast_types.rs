@@ -80,6 +80,14 @@ pub enum Type {
 }
 
 impl Type {
+    // Returns true if self is the void type.
+    pub fn is_void(&self) -> bool {
+        match self {
+            Type::Void => true,
+            _ => false,
+        }
+    }
+
     // Returns true if self is the error type.
     pub fn is_error(&self) -> bool {
         match self {

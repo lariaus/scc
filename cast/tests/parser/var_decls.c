@@ -1,4 +1,4 @@
-// XTEST: cparser
+// XTEST: cast
 // XTEST-OUTPUT-CHECK
 
 // CHECK: function @var_no_init

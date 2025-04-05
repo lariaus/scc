@@ -1,4 +1,4 @@
-// XTEST: cparser
+// XTEST: cast
 // XTEST-OUTPUT-CHECK
 
 // CHECK: function @binop_add(x: int, y: int) -> int

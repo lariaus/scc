@@ -1,0 +1,13 @@
+// XTEST: sir-runner --interpret
+
+module {
+
+// @XANNOT: exec "id_stack" --inputs 15 --outputs 15
+function @id_stack(%arg0: i32) -> (i32) {
+    %0 = lir.alloca ptr<i32>, align 4
+    lir.store %arg0, %0 : ptr<i32>
+    %1 = lir.load %0 : ptr<i32>
+    return %1: i32
+}
+
+}

@@ -1,9 +1,9 @@
-use core::panic;
+use std::collections::HashMap;
 
 use sir_core::{
     attributes::Attribute,
     ir_context::IRContext,
-    ir_data::{OperationID, ValueID},
+    ir_data::{operation_id_from_opaque, operation_id_to_opaque, OperationID, ValueID},
     ir_printer::IRPrintableObject,
     op_interfaces::SymbolOp,
     operation::{GenericOperation, OperationImpl},
@@ -11,35 +11,89 @@ use sir_core::{
     types::FunctionType,
     value::Value,
 };
-use utils::scoped_map::ScopedMap;
 
-use crate::interfaces::{InterpretableComputeOp, InterpretableOp};
+use crate::{
+    interfaces::{InterpretableComputeOp, InterpretableOp},
+    mem_emulator::MemEmulator,
+};
 
-// Represent the program counter object
-enum ProgramCounter {
-    AtOp(OperationID),
-    End,
-    Error,
+const _INST_ADDRESS_RAW_INVALID: usize = usize::max_value() - 1;
+const _INST_ADDRESS_RAW_END: usize = usize::max_value() - 2;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InstructionAddress {
+    Operation(OperationID),
+    Invalid, // Indicates that the address is invalid
+    End,     // Special value to indicate that it's the end of the program.
 }
 
-impl ProgramCounter {
-    pub fn is_end(&self) -> bool {
+impl InstructionAddress {
+    /// Get the associatied operation with the address.
+    /// Or returns none if invalid / end.
+    pub fn get_op(&self) -> Option<OperationID> {
         match self {
-            ProgramCounter::End => true,
+            InstructionAddress::Operation(op) => Some(*op),
+            _ => None,
+        }
+    }
+
+    /// Returns true if the instruction is invalid.
+    pub fn is_invalid(&self) -> bool {
+        match self {
+            InstructionAddress::Invalid => true,
             _ => false,
         }
     }
+
+    /// Returns true if the instruction is the end of the program.
+    pub fn is_end(&self) -> bool {
+        match self {
+            InstructionAddress::End => true,
+            _ => false,
+        }
+    }
+
+    // Convert the instruction address to a raw value that can be stored in mem / register.
+    pub fn to_raw(&self) -> usize {
+        match self {
+            InstructionAddress::Operation(op) => operation_id_to_opaque(*op),
+            InstructionAddress::Invalid => _INST_ADDRESS_RAW_INVALID,
+            InstructionAddress::End => _INST_ADDRESS_RAW_END,
+        }
+    }
+
+    /// Build an instruction address from the raw value.
+    pub fn from_raw(val: usize) -> Self {
+        if val == _INST_ADDRESS_RAW_INVALID {
+            Self::Invalid
+        } else if val == _INST_ADDRESS_RAW_END {
+            Self::End
+        } else {
+            Self::Operation(operation_id_from_opaque(val))
+        }
+    }
+}
+
+/// Represent the current frame of the executed function.
+struct CallFrame {
+    // Return address at the end of the function
+    ret_addr: InstructionAddress,
+    // Values of the function favariables.
+    // @TODO[I10][SIR-INTERPRETER]: Use real types instead of Attributes in the interpreter.
+    vals: HashMap<ValueID, Attribute>,
+    // Address of the top of the stack.
+    stack_top: usize,
 }
 
 // Basic class to interpret code / functions using the interpreter.
 pub struct SIRInterpreter<'a> {
     ctx: &'a IRContext,
     syms: SymbolTable,
-    vals: ScopedMap<ValueID, Attribute>,
     fun_inputs: Option<Vec<Attribute>>,
     fun_outputs: Option<Vec<Attribute>>,
-    rets_stack: Vec<ProgramCounter>,
-    pc: ProgramCounter,
+    mem: MemEmulator,
+    calls_stack: Vec<CallFrame>,
+    pc: InstructionAddress,
 }
 
 impl<'a> SIRInterpreter<'a> {
@@ -48,11 +102,11 @@ impl<'a> SIRInterpreter<'a> {
         Self {
             ctx: root.get_context(),
             syms: SymbolTable::make_from_op(root),
-            vals: ScopedMap::new(),
             fun_inputs: None,
             fun_outputs: None,
-            rets_stack: Vec::new(),
-            pc: ProgramCounter::Error,
+            mem: MemEmulator::new(),
+            calls_stack: Vec::new(),
+            pc: InstructionAddress::Invalid,
         }
     }
 
@@ -85,16 +139,6 @@ impl<'a> SIRInterpreter<'a> {
         self.fun_inputs = Some(inputs);
     }
 
-    // Open a new scope for the values.
-    pub fn open_values_scope(&mut self) {
-        self.vals.open_scope();
-    }
-
-    // Close the op scope for the values.
-    pub fn close_values_scope(&mut self) {
-        self.vals.close_scope();
-    }
-
     // Get the outputs values of a function call.
     // Panic if there is no function call.
     pub fn take_function_outputs(&mut self) -> Vec<Attribute> {
@@ -109,6 +153,14 @@ impl<'a> SIRInterpreter<'a> {
         self.fun_outputs = Some(outputs);
     }
 
+    // Returns the address of the top of the stack.
+    pub fn get_stack_top_addr(&self) -> usize {
+        match self.calls_stack.last() {
+            Some(frame) => frame.stack_top,
+            None => self.mem.stack_address(),
+        }
+    }
+
     pub fn interpret_function(
         &mut self,
         symbol_name: &str,
@@ -121,8 +173,7 @@ impl<'a> SIRInterpreter<'a> {
 
         // Prepare the interpreter
         self._reset_interpreter();
-        self.rets_stack.push(ProgramCounter::End);
-        self.pc = ProgramCounter::AtOp(fun);
+        self.start_new_call_frame(InstructionAddress::Operation(fun), InstructionAddress::End);
 
         // Set the inputs
         self.set_function_inputs(inputs);
@@ -136,7 +187,7 @@ impl<'a> SIRInterpreter<'a> {
         self.take_function_outputs()
     }
 
-    pub fn assign_value(&mut self, val: Value, attr: Attribute) {
+    pub fn set_value(&mut self, val: Value, attr: Attribute) {
         let attr_ty = attr.get_type().expect("Value must be typed");
         if attr_ty != val.get_type() {
             panic!(
@@ -146,11 +197,72 @@ impl<'a> SIRInterpreter<'a> {
                 attr_ty.to_string_repr()
             );
         }
-        self.vals.insert(val.as_id(), attr);
+
+        let frame = self.calls_stack.last_mut().expect("no callframe open");
+        frame.vals.insert(val.as_id(), attr);
     }
 
     pub fn get_value(&self, val: Value) -> &Attribute {
-        self.vals.get(&val.as_id()).expect("Undefined value")
+        let frame = self.calls_stack.last().expect("no callframe open");
+        frame.vals.get(&val.as_id()).expect("Undefined value")
+    }
+
+    // Perform a stack allocation of size `size`.
+    // Returns the address aligned by `align`.
+    pub fn alloca(&mut self, size: usize, align: usize) -> usize {
+        let frame = self.calls_stack.last_mut().expect("no callframe open");
+
+        let min_align = std::mem::size_of::<usize>();
+        let align = std::cmp::max(min_align, align);
+
+        let mut addr = frame.stack_top;
+        if addr % align != 0 {
+            addr += align - addr % align;
+        }
+        frame.stack_top = addr + size;
+        addr
+    }
+
+    /// Returns a mutable reference of type T from its address.
+    /// Returns none if the address is invalid.
+    /// The function is unsafe as we can't guarantee that the object was allocated before.
+    /// Reading the reference is UB.
+    pub unsafe fn get_mem_ref<T: Sized>(&self, addr: usize) -> &T {
+        self.mem
+            .get_ref(addr)
+            .expect(&format!("Trying to access invalid address 0x{:x}", addr))
+    }
+
+    /// Version of `get_mem_ref` which is unsafe but marked as safe.
+    /// SIR is an unsafe language, so obsiously interpreting it is unsafe.
+    pub fn get_mem_ref_unsafe<T: Sized>(&self, addr: usize) -> &T {
+        // @TODO[I9][SIR-INTERPRETER]: Make the Interpreter memory safe.
+        unsafe { self.get_mem_ref::<T>(addr) }
+    }
+
+    /// Returns a mutable reference of type T from its address.
+    /// Returns none if the address is invalid.
+    /// The function is unsafe as we can't guarantee that the object was allocated before.
+    /// Reading / Writing the reference is UB.
+    pub unsafe fn get_mem_mut<T: Sized>(&mut self, addr: usize) -> &mut T {
+        self.mem
+            .get_mut_ref(addr)
+            .expect(&format!("Trying to access invalid address 0x{:x}", addr))
+    }
+
+    /// Version of `get_mem_mut` which is unsafe but marked as safe.
+    /// SIR is an unsafe language, so obsiously interpreting it is unsafe.
+    pub unsafe fn get_mem_mut_unsafe<T: Sized>(&mut self, addr: usize) -> &mut T {
+        // @TODO[I9][SIR-INTERPRETER]: Make the Interpreter memory safe.
+        unsafe { self.get_mem_mut::<T>(addr) }
+    }
+
+    // Write `val` to memory address `addr`.
+    /// Returns none if the address is invalid.
+    /// Returns the number of bytes written.
+    /// Differs from `self.get_mem_mut(addr) = val``, here the memory doesn't need to be initialized.
+    pub fn write_mem_data<T: Sized>(&mut self, addr: usize, val: T) -> Option<usize> {
+        self.mem.write_data(addr, val)
     }
 
     // Interpret the operation.
@@ -161,9 +273,9 @@ impl<'a> SIRInterpreter<'a> {
             let outputs = compute_op.interpret(&inputs[..]);
             assert_eq!(outputs.len(), op.get_num_outputs());
             for (output_val, output_attr) in op.get_outputs().zip(outputs) {
-                self.assign_value(output_val, output_attr);
+                self.set_value(output_val, output_attr);
             }
-            self.move_pc_to_next_op();
+            self.move_pc_to_next_instruction();
         } else if let Some(interpret_op) = op.get_interface::<InterpretableOp>() {
             interpret_op.interpret(self);
         } else {
@@ -174,65 +286,58 @@ impl<'a> SIRInterpreter<'a> {
         }
     }
 
-    // Move program counter to the next operation.
-    pub fn move_pc_to_next_op(&mut self) {
-        let op = match self.pc {
-            ProgramCounter::AtOp(op) => op,
-            ProgramCounter::End => panic!("Program execution already finished"),
-            ProgramCounter::Error => panic!("Invalid PC (usually when went past end of block"),
+    /// Get the adress of the instruction after `addr`.
+    pub fn get_next_ins_address(&self, addr: InstructionAddress) -> InstructionAddress {
+        let op = match addr {
+            InstructionAddress::Operation(op) => op,
+            _ => return InstructionAddress::Invalid,
         };
 
-        // Find the next op.
         let op = self.ctx.get_generic_operation(op);
         let next_op = op.get_op_after();
-        self.pc = if let Some(next_op) = next_op {
-            ProgramCounter::AtOp(next_op.as_id())
+        if let Some(next_op) = next_op {
+            InstructionAddress::Operation(next_op.as_id())
         } else {
-            ProgramCounter::Error
-        };
+            InstructionAddress::Invalid
+        }
     }
 
-    // Set the program counter (next executed operation) to op.
-    pub fn set_pc_to_op(&mut self, op: OperationID) {
-        self.pc = ProgramCounter::AtOp(op)
+    /// Set the program counter to `pc`.
+    pub fn set_pc(&mut self, addr: InstructionAddress) {
+        self.pc = addr;
     }
 
-    // Push an operation to the call stack, PC will be set to it after returning from the call.
-    pub fn push_to_callstack(&mut self, op: OperationID) {
-        self.rets_stack.push(ProgramCounter::AtOp(op));
+    /// Move program counter to the next instruction.
+    pub fn move_pc_to_next_instruction(&mut self) {
+        self.pc = self.get_next_ins_address(self.pc);
     }
 
-    // Push the next operation to the call stack, PC will be set to it after returning from the call.
-    pub fn push_next_op_to_callstack(&mut self) {
-        let op = match self.pc {
-            ProgramCounter::AtOp(op) => op,
-            ProgramCounter::End => panic!("Program execution already finished"),
-            ProgramCounter::Error => panic!("Invalid PC (usually when went past end of block"),
+    // Call a new function.
+    // Set the pc to `fn_start_addr`.
+    // PC will be set to `ret_addr` after returning from the function.
+    pub fn start_new_call_frame(
+        &mut self,
+        fn_start_addr: InstructionAddress,
+        ret_addr: InstructionAddress,
+    ) {
+        let frame = CallFrame {
+            ret_addr,
+            vals: HashMap::new(),
+            stack_top: self.get_stack_top_addr(),
         };
-
-        // Find the next op.
-        let op = self.ctx.get_generic_operation(op);
-        let next_op = op.get_op_after();
-        let pc = if let Some(next_op) = next_op {
-            ProgramCounter::AtOp(next_op.as_id())
-        } else {
-            ProgramCounter::Error
-        };
-        self.rets_stack.push(pc);
+        self.calls_stack.push(frame);
+        self.pc = fn_start_addr;
     }
 
     // Pop the top of the callstack and update the PC.
-    pub fn pop_callstack(&mut self) {
-        self.pc = self.rets_stack.pop().expect("callstack is empty");
+    pub fn pop_call_frame(&mut self) {
+        let frame = self.calls_stack.pop().expect("callstack is empty");
+        self.pc = frame.ret_addr;
     }
 
     // Execute the next instruction.
     pub fn step(&mut self) {
-        let op = match self.pc {
-            ProgramCounter::AtOp(op) => op,
-            ProgramCounter::End => panic!("Program execution already finished"),
-            ProgramCounter::Error => panic!("Invalid PC (usually when went past end of block"),
-        };
+        let op = self.pc.get_op().expect("Current pc is invalid");
 
         // Interpret the op.
         let op = self.ctx.get_generic_operation(op);
@@ -242,8 +347,7 @@ impl<'a> SIRInterpreter<'a> {
     fn _reset_interpreter(&mut self) {
         self.fun_inputs = None;
         self.fun_outputs = None;
-        self.vals.clear();
-        self.rets_stack.clear();
-        self.pc = ProgramCounter::Error;
+        self.calls_stack.clear();
+        self.pc = InstructionAddress::Invalid;
     }
 }

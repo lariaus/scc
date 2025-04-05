@@ -128,6 +128,10 @@ impl TokenValue {
     pub fn sym_at() -> Self {
         Self::Symbol("@")
     }
+
+    pub fn sym_hash() -> Self {
+        Self::Symbol("#")
+    }
 }
 
 impl Display for TokenValue {
@@ -627,6 +631,8 @@ impl Lexer {
         let mut end_pos = self.ifs.get_position();
 
         let mut val: u64 = 0;
+        let mut is_hex = false;
+        let mut parse_hex_st = Some(0);
         let mut has_decimal = false;
         let mut val_decimal: u64 = 0;
         let mut decimal_div: u64 = 1;
@@ -636,7 +642,25 @@ impl Lexer {
                 Some(c) => c,
                 None => break,
             };
-            if !(c.is_numeric() || (c == '.' && !has_decimal)) {
+
+            if parse_hex_st.is_some() {
+                let st = parse_hex_st.unwrap();
+                if st == 0 && c == '0' {
+                    parse_hex_st = Some(1);
+                    self._getc();
+                    continue;
+                } else if st == 1 && c == 'x' {
+                    is_hex = true;
+                    parse_hex_st = None;
+                    self._getc();
+                    continue;
+                } else {
+                    parse_hex_st = None;
+                }
+            }
+
+            if !(c.is_numeric() || (is_hex && c.is_ascii_hexdigit()) || (c == '.' && !has_decimal))
+            {
                 break;
             }
 
@@ -648,14 +672,18 @@ impl Lexer {
 
             if c == '.' {
                 assert!(!has_decimal);
+                assert!(!is_hex);
                 has_decimal = true;
             } else {
-                let digit = c.to_string().parse::<u64>().unwrap();
+                let base: u64 = if is_hex { 16 } else { 10 };
+                let mut c_str_data = [0, 0];
+                let c_str = c.encode_utf8(&mut c_str_data);
+                let digit = u64::from_str_radix(c_str, base as u32).unwrap();
                 if has_decimal {
                     val_decimal = 10 * val_decimal + digit;
                     decimal_div *= 10;
                 } else {
-                    val = 10 * val + digit;
+                    val = base * val + digit;
                 }
             }
         }
@@ -1062,7 +1090,7 @@ mod tests {
 
     #[test]
     fn test_lex_ints() {
-        let mut l = lexer_from_str(" 78   7  245\n6\t\t 23  49");
+        let mut l = lexer_from_str(" 78   7  245\n6\t\t 23  49 0xb4");
         let pos_beg = l.get_position();
 
         let tok = l.get_token();
@@ -1079,7 +1107,7 @@ mod tests {
 
         assert_eq!(
             lexer_get_tokens_str(&mut l, pos_beg),
-            "78 7 245 6 23 49 <<EOF>>"
+            "78 7 245 6 23 49 180 <<EOF>>"
         );
 
         let tok = l.get_token();
@@ -1095,8 +1123,12 @@ mod tests {
         assert_eq!(loc_fmt(tok.loc), "2:9[21]-2:10[22]");
 
         let tok = l.get_token();
+        assert_eq!(tok.get_int(), Some(0xb4));
+        assert_eq!(loc_fmt(tok.loc), "2:12[24]-2:15[27]");
+
+        let tok = l.get_token();
         assert!(tok.is_eof());
-        assert_eq!(loc_fmt(tok.loc), "2:11[23]-2:11[23]");
+        assert_eq!(loc_fmt(tok.loc), "2:16[28]-2:16[28]");
     }
 
     #[test]

@@ -1,4 +1,4 @@
-// XTEST: cparser
+// XTEST: cast
 // XTEST-OUTPUT-CHECK
 
 // CHECK: Parser: Error: Expected identifier but got `return` at {{.*}}:5:20-25:

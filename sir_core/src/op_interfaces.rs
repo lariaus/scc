@@ -1,7 +1,7 @@
 use std::any::Any;
 
 use const_fnv1a_hash::fnv1a_hash_str_64;
-use diagnostics::diagnostics::DiagnosticsEmitter;
+use diagnostics::diagnostics::{DiagnosticsEmitter, ErrorOrSuccess};
 
 use crate::{
     attributes::Attribute,
@@ -69,7 +69,7 @@ pub trait OpInterfaceBuilder {
 // @TODO[I1][SIR-CORE]: Remove BuiltinOpInterfaceWrapper.clone() hack
 
 // @XGENDEF:SIRInterface BuiltinOp
-// @+method {{ verify(diagnostics: "&mut DiagnosticsEmitter") }}
+// @+method {{ verify(diagnostics: "&mut DiagnosticsEmitter") -> "ErrorOrSuccess" }}
 // @+method {{ custom_print(printer: "&mut IRPrinter")
 //   -> "Result<(), std::io::Error>" }}
 // @+staticmethod {{ custom_parse(parser: "&mut IRParser", ctx: "&mut IRContext", st: "&mut OperationParserState")
@@ -88,7 +88,7 @@ pub trait BuiltinOpInterfaceImpl {
         ctx: &'a IRContext,
         data: &'a OperationData,
         diagnostics: &mut DiagnosticsEmitter,
-    );
+    ) -> ErrorOrSuccess;
     fn custom_print<'a>(
         &self,
         ctx: &'a IRContext,
@@ -181,7 +181,7 @@ impl<'a> OperationImpl<'a> for BuiltinOp<'a> {
 
 // Methods implementation for BuiltinOp.
 impl<'a> BuiltinOp<'a> {
-    pub fn verify(&self, diagnostics: &mut DiagnosticsEmitter) {
+    pub fn verify(&self, diagnostics: &mut DiagnosticsEmitter) -> ErrorOrSuccess {
         self.wrapper
             .dyn_impl
             .verify(&self.ctx, &self.data, diagnostics)

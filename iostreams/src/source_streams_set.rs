@@ -23,6 +23,11 @@ impl SourceStreamsSet {
         }
     }
 
+    // Returns the number of inputs.
+    pub fn len(&self) -> usize {
+        self.files.len()
+    }
+
     // Create a set with a single raw_source_string
     pub fn with_unique_raw_source_string(code: String) -> Self {
         let mut res = Self::new();

@@ -4,7 +4,7 @@ use parse::{lexer::TokenValue, parser::Parser};
 
 use crate::{
     ir_context::IRContext,
-    ir_data::{BlockData, BlockID},
+    ir_data::{BlockData, BlockID, ValueID},
     ir_parser::{BlockParserState, IRParsableObject, IRParsableObjectWithContext},
     ir_printer::{IRPrintableObject, IRPrinter, IRPrinterOptions},
     operation::{GenericOperation, OperationImpl},
@@ -46,6 +46,17 @@ impl<'a> Block<'a> {
         self.data.ops().len()
     }
 
+    /// Returns the last op of the block.
+    /// Warning: it might not be a terminator op.
+    /// Returns None if the block is empty
+    pub fn get_terminator_op(&self) -> Option<GenericOperation<'a>> {
+        let ctx = self.ctx();
+        self.data
+            .ops()
+            .last()
+            .map(|uid| GenericOperation::make_from_data(ctx, ctx.get_operation_data(*uid)))
+    }
+
     // Returns an iterator of all operations in the block.
     pub fn get_ops(&self) -> impl DoubleEndedIterator<Item = GenericOperation<'a>> {
         let ctx = self.ctx();
@@ -67,6 +78,10 @@ impl<'a> Block<'a> {
             .args()
             .iter()
             .map(|uid| Value::make(ctx, ctx.get_value_data(*uid)))
+    }
+
+    pub fn get_operands_ids(&self) -> &[ValueID] {
+        self.data.args()
     }
 
     // Returns the block operand #idx.

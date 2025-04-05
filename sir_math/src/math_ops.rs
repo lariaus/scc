@@ -1,4 +1,4 @@
-use diagnostics::diagnostics::DiagnosticsEmitter;
+use diagnostics::diagnostics::{DiagnosticsEmitter, ErrorOrSuccess};
 use parse::lexer::TokenValue;
 use parse::parser::Parser;
 use sir_core::{
@@ -32,6 +32,7 @@ use sir_core::{
 // @tags ["TAG_PURE_OP"]
 // @interfaces [ConstantOp]
 // @custom_print_parse
+// @disable_default_builder
 
 // @XGENBEGIN
 
@@ -75,6 +76,11 @@ impl<'a> MathConstantOp<'a> {
         self.get_attr(MATH_CONSTANT_ATTR_VALUE)
             .expect("Missing `value` attribute")
     }
+
+    pub fn get_value_attr(&self) -> &'a Attribute {
+        self.get_attr(MATH_CONSTANT_ATTR_VALUE)
+            .expect("Missing `value` attribute")
+    }
 }
 
 // Wrapper struct for the BuiltinOp interface implementation.
@@ -87,7 +93,7 @@ impl BuiltinOpInterfaceImpl for MathConstantOpBuiltinOpInterfaceImpl {
         ctx: &'a IRContext,
         data: &'a OperationData,
         diagnostics: &mut DiagnosticsEmitter,
-    ) {
+    ) -> ErrorOrSuccess {
         GenericOperation::make_from_data(ctx, data)
             .cast::<MathConstantOp>()
             .unwrap()
@@ -151,16 +157,16 @@ impl OpInterfaceBuilder for MathConstantOpConstantOpInterfaceImpl {
 }
 
 impl<'a> MathConstantOp<'a> {
-    pub fn verify(&self, diagnostics: &mut DiagnosticsEmitter) {
-        ir_checks::verif_inputs_count(diagnostics, self.generic(), 0);
+    pub fn verify(&self, diagnostics: &mut DiagnosticsEmitter) -> ErrorOrSuccess {
+        ir_checks::verif_inputs_count(diagnostics, self.generic(), 0)?;
         ir_checks::verif_has_attr_as(
             diagnostics,
             self.generic(),
             MATH_CONSTANT_ATTR_VALUE,
             |attr| ir_checks::pred_is_scalar_attribute(attr),
             "scalar attribute",
-        );
-        ir_checks::verif_outputs_count(diagnostics, self.generic(), 1);
+        )?;
+        ir_checks::verif_outputs_count(diagnostics, self.generic(), 1)?;
         ir_checks::verif_io_type(
             diagnostics,
             self.generic(),
@@ -169,8 +175,9 @@ impl<'a> MathConstantOp<'a> {
             "result",
             |ty| ir_checks::pred_match_type_of_attr(&self.generic(), ty, "value"),
             "same type than value",
-        );
-        ir_checks::verif_blocks_count(diagnostics, self.generic(), 0);
+        )?;
+        ir_checks::verif_blocks_count(diagnostics, self.generic(), 0)?;
+        Ok(())
     }
     pub fn clone() -> BuiltinOpInterfaceImplWrapper {
         BuiltinOpInterfaceImplWrapper::new(Box::new(MathConstantOpBuiltinOpInterfaceImpl))
@@ -238,6 +245,7 @@ impl<'a> MathConstantOp<'a> {
 // @tags ["TAG_PURE_OP"]
 // @+mod SameInputsAndOutputsTypes
 // @custom_print_parse
+// @disable_default_builder
 
 // @XGENBEGIN
 
@@ -293,7 +301,7 @@ impl BuiltinOpInterfaceImpl for MathIAddOpBuiltinOpInterfaceImpl {
         ctx: &'a IRContext,
         data: &'a OperationData,
         diagnostics: &mut DiagnosticsEmitter,
-    ) {
+    ) -> ErrorOrSuccess {
         GenericOperation::make_from_data(ctx, data)
             .cast::<MathIAddOp>()
             .unwrap()
@@ -334,20 +342,21 @@ impl OpInterfaceBuilder for MathIAddOpBuiltinOpInterfaceImpl {
 }
 
 impl<'a> MathIAddOp<'a> {
-    pub fn verify(&self, diagnostics: &mut DiagnosticsEmitter) {
-        ir_checks::verif_inputs_count(diagnostics, self.generic(), 2);
-        ir_checks::verif_io_is_of_type::<IntegerType>(diagnostics, self.generic(), true, 0, "lhs");
-        ir_checks::verif_io_is_of_type::<IntegerType>(diagnostics, self.generic(), true, 1, "rhs");
-        ir_checks::verif_outputs_count(diagnostics, self.generic(), 1);
+    pub fn verify(&self, diagnostics: &mut DiagnosticsEmitter) -> ErrorOrSuccess {
+        ir_checks::verif_inputs_count(diagnostics, self.generic(), 2)?;
+        ir_checks::verif_io_is_of_type::<IntegerType>(diagnostics, self.generic(), true, 0, "lhs")?;
+        ir_checks::verif_io_is_of_type::<IntegerType>(diagnostics, self.generic(), true, 1, "rhs")?;
+        ir_checks::verif_outputs_count(diagnostics, self.generic(), 1)?;
         ir_checks::verif_io_is_of_type::<IntegerType>(
             diagnostics,
             self.generic(),
             false,
             0,
             "result",
-        );
-        ir_checks::verif_blocks_count(diagnostics, self.generic(), 0);
-        ir_checks::verif_same_input_output_types(diagnostics, self.generic());
+        )?;
+        ir_checks::verif_blocks_count(diagnostics, self.generic(), 0)?;
+        ir_checks::verif_same_input_output_types(diagnostics, self.generic())?;
+        Ok(())
     }
     pub fn clone() -> BuiltinOpInterfaceImplWrapper {
         BuiltinOpInterfaceImplWrapper::new(Box::new(MathIAddOpBuiltinOpInterfaceImpl))

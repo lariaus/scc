@@ -69,11 +69,16 @@ class OpDefInfos:
         self.custom_print_parse = False
         self.has_constant_builder = False
         self.has_custom_verifier = False
+        self.disable_default_builder = False
+        self.gen_minimal_fns_set = False
         self.extra_verif_lines = []
 
         # Go through the raw data to initialize the object
         self.opname = raw_data["opname"]
-        
+        if self.opname.startswith('test.'):
+            # The test dialect will have lots of warnings about unused functions if we declare them all
+            self.gen_minimal_fns_set = True
+
         if "block" in raw_data:
             self.blocks = raw_data["block"]
         
@@ -103,6 +108,13 @@ class OpDefInfos:
         self.custom_print_parse = 'custom_print_parse' in raw_data
         self.has_custom_verifier = 'verifier' in raw_data
         self.has_constant_builder = 'constant_builder' in raw_data
+        self.disable_default_builder = 'disable_default_builder' in raw_data
+
+        name_snake_case = camel_to_snake_case(self.class_name)
+        if name_snake_case.endswith('_op'):
+            name_snake_case = name_snake_case[:-3]
+        self.name_snake_case = name_snake_case
+        self.class_name_upper = name_snake_case.upper()
 
 
     @staticmethod
@@ -120,11 +132,6 @@ class OpDefInfos:
         # Prepare data for generation
         if self.opname is None:
             raise Exception('Missing opname for {}'.format(self.class_name))
-        
-        name_snake_case = camel_to_snake_case(self.class_name)
-        if name_snake_case.endswith('_op'):
-            name_snake_case = name_snake_case[:-3]
-        class_name_upper = name_snake_case.upper()
 
         # Start by applying all mods
         for mod in self.mods:
@@ -133,7 +140,7 @@ class OpDefInfos:
         # Generate the base code
         ofs.write(CODE_OPDEF_BASE.format(
             class_name=self.class_name,
-            class_name_upper=class_name_upper,
+            class_name_upper=self.class_name_upper,
             opname=self.opname
         ))
 
@@ -142,7 +149,7 @@ class OpDefInfos:
         if len(self.attrs) > 0:
             for attr in self.attrs:
                 ofs.write('const {class_name_upper}_ATTR_{attr_name_upper}: &\'static str = "{attr_name}";\n'.format(
-                    class_name_upper=class_name_upper,
+                    class_name_upper=self.class_name_upper,
                     attr_name = attr.name,
                     attr_name_upper = attr.name.upper()
                 ))
@@ -174,12 +181,14 @@ class OpDefInfos:
 
         # Generate all attributes getters
         for attr in self.attrs:
-            full_sym_name = '{}_ATTR_{}'.format(class_name_upper, attr.name.upper())
+            full_sym_name = '{}_ATTR_{}'.format(self.class_name_upper, attr.name.upper())
             ofs.write('    pub fn get_{}(&self) -> {} {{\n'.format(attr.name, attr.attr_type))
             ofs.write('        {}\n'.format(rewrite_code_with_repl(attr.getter_code, {
                 'attr_symbol': full_sym_name,
             })))
             ofs.write('    }\n\n')
+            if not self.gen_minimal_fns_set:
+                ofs.write(COPE_OPDEF_GETTER_ATTR.format(name=attr.name, attr_sym_name=full_sym_name))
         
         # Generate all blocks getters
         for (idx, block_name) in enumerate(self.blocks):
@@ -196,8 +205,13 @@ class OpDefInfos:
 
         # Generate some extra functions.
         ofs.write("impl<'a> {}<'a> {{\n".format(self.class_name))
+        if not self.disable_default_builder:
+            self._gen_default_builder(ofs)
         self._gen_verify_fun(ofs)
         self._gen_builtin_clone_fun(ofs)
+        if not self.custom_print_parse:
+            self._gen_custom_print_fun(ofs)
+            self._gen_custom_parse_fun(ofs)
         ofs.write('}\n\n')
 
         # Generate the register for the op.
@@ -205,14 +219,9 @@ class OpDefInfos:
         ofs.write('\n\n')
 
     def _gen_register_fun(self, ofs):
-        name_snake_case = camel_to_snake_case(self.class_name)
-        if name_snake_case.endswith('_op'):
-            name_snake_case = name_snake_case[:-3]
-        class_name_upper = name_snake_case.upper()
-
-        ofs.write('fn register_{}_op(ctx: &mut IRContext) {{'.format(name_snake_case))
+        ofs.write('fn register_{}_op(ctx: &mut IRContext) {{'.format(self.name_snake_case))
         ofs.write('    let mut infos = OperationTypeBuilder::new();\n')
-        ofs.write('    infos.set_opname({}_OPNAME);\n'.format(class_name_upper))
+        ofs.write('    infos.set_opname({}_OPNAME);\n'.format(self.class_name_upper))
         ofs.write('    infos.set_impl::<{}>();\n'.format(self.class_name))
         ofs.write('    infos.set_builtin_interface::<{}BuiltinOpInterfaceImpl>();\n'.format(self.class_name))
         if len(self.tags) > 0:
@@ -225,17 +234,71 @@ class OpDefInfos:
         ofs.write('    ctx.register_operation(infos.build());\n')
         ofs.write('}\n\n')
 
-    def _gen_verify_fun(self, ofs):
-        name_snake_case = camel_to_snake_case(self.class_name)
-        if name_snake_case.endswith('_op'):
-            name_snake_case = name_snake_case[:-3]
-        class_name_upper = name_snake_case.upper()
 
-        ofs.write("    pub fn verify(&self, diagnostics: &mut DiagnosticsEmitter) {\n")
+    def _gen_default_builder(self, ofs):
+
+        # Build the signature
+        ofs.write("    pub fn build(")
+        first_input = True
+        for val in self.inputs:
+            if not first_input: ofs.write(', ')
+            first_input = False
+            ofs.write('{}: ValueID'.format(val.name))
+        for val in self.attrs:
+            if not first_input: ofs.write(', ')
+            first_input = False
+            ofs.write('{}: Attribute'.format(val.name))
+        for val in self.blocks:
+            if not first_input: ofs.write(', ')
+            first_input = False
+            ofs.write('{}: BlockID'.format(val.name))
+        for val in self.outputs:
+            if not first_input: ofs.write(', ')
+            first_input = False
+            ofs.write('{}: Type'.format(val.name))
+        ofs.write(') -> OpImplBuilderState<Self> {\n')
+
+        ofs.write("        let mut st = OpImplBuilderState::make();\n")
+        
+        # Set the inputs.
+        if len(self.inputs) > 0:
+            ofs.write("        st.set_inputs(vec![{}]);\n".format(
+                ', '.join([x.name for x in self.inputs])))
+
+        # Set the attrs.
+        for attr in self.attrs:
+            attr_id_name = '{}_ATTR_{}'.format(self.class_name_upper, attr.name.upper())
+            ofs.write("        st.set_attr({}, {});\n".format(
+                attr_id_name, attr.name))
+
+        # Set the blocks.
+        if len(self.blocks) > 0:
+            ofs.write("        st.set_blocks(vec![{}]);\n".format(
+                ', '.join([x.name for x in self.blocks])))
+
+        # Set the outputs types.
+        if len(self.outputs) > 0:
+            ofs.write("        st.set_outputs_types(vec![{}]);\n".format(
+                ', '.join([x.name for x in self.outputs])))
+        
+        # Return the builder.
+        ofs.write("        st\n")
+        ofs.write("    }\n")
+
+
+        #pub fn build(lhs: ValueID, rhs: ValueID, out: Type) -> OpImplBuilderState<Self> {
+        #    let mut st = OpImplBuilderState::make();
+        #    st.set_inputs(vec![lhs.into(), rhs.into()]);
+        #    st.set_outputs_types(vec![out]);
+        #    st
+        #}
+
+    def _gen_verify_fun(self, ofs):
+        ofs.write("    pub fn verify(&self, diagnostics: &mut DiagnosticsEmitter) -> ErrorOrSuccess {\n")
         
         # Check the inputs.
         if not self.has_variadic_inputs():
-            ofs.write("        ir_checks::verif_inputs_count(diagnostics, self.generic(), {});\n".format(len(self.inputs)))
+            ofs.write("        ir_checks::verif_inputs_count(diagnostics, self.generic(), {})?;\n".format(len(self.inputs)))
             for (idx, val) in enumerate(self.inputs):
                 if len(val.verif_code) != 0:
                     ofs.write("        {}\n".format(rewrite_code_with_repl(val.verif_code, {
@@ -246,7 +309,7 @@ class OpDefInfos:
 
         # Check the attributes.
         for attr in self.attrs:
-            full_sym_name = '{}_ATTR_{}'.format(class_name_upper, attr.name.upper())
+            full_sym_name = '{}_ATTR_{}'.format(self.class_name_upper, attr.name.upper())
             ofs.write("        {}\n".format(rewrite_code_with_repl(attr.verif_code, {
                 'attr_symbol': full_sym_name,
             })))
@@ -254,7 +317,7 @@ class OpDefInfos:
 
         # Check the outputs.
         if not self.has_variadic_outputs():
-            ofs.write("        ir_checks::verif_outputs_count(diagnostics, self.generic(), {});\n".format(len(self.outputs)))
+            ofs.write("        ir_checks::verif_outputs_count(diagnostics, self.generic(), {})?;\n".format(len(self.outputs)))
             for (idx, val) in enumerate(self.outputs):
                 if len(val.verif_code) != 0:
                     ofs.write("        {}\n".format(rewrite_code_with_repl(val.verif_code, {
@@ -264,7 +327,7 @@ class OpDefInfos:
                     })))
 
         # Check the blocks.
-        ofs.write("        ir_checks::verif_blocks_count(diagnostics, self.generic(), {});\n".format(len(self.blocks)))
+        ofs.write("        ir_checks::verif_blocks_count(diagnostics, self.generic(), {})?;\n".format(len(self.blocks)))
 
         # Call extra verif code.
         for line in self.extra_verif_lines:
@@ -272,14 +335,21 @@ class OpDefInfos:
 
         # Call the custom verifier if needed
         if self.has_custom_verifier:
-            ofs.write("        self.verify_op(diagnostics)\n")
+            ofs.write("        self.verify_op(diagnostics)?;\n")
 
+        ofs.write("        Ok(())\n")
         ofs.write("    }\n")
 
     def _gen_builtin_clone_fun(self, ofs):
         ofs.write("    pub fn clone() -> BuiltinOpInterfaceImplWrapper {\n")
         ofs.write("        BuiltinOpInterfaceImplWrapper::new(Box::new({}BuiltinOpInterfaceImpl))\n".format(self.class_name))
         ofs.write("    }\n")
+
+    def _gen_custom_print_fun(self, ofs):
+        ofs.write(CODE_OPDEF_DEFAULT_CUSTOM_PRINT_FUN)
+
+    def _gen_custom_parse_fun(self, ofs):
+        ofs.write(CODE_OPDEF_DEFAULT_CUSTOM_PARSE_FUN)
 
     def _apply_mod(self, mod):
         if mod.kind == 'op-verifier-mod':
@@ -539,10 +609,7 @@ def generate_registered_ops(ofs, defs, file_defs, args):
         if xgen_def.def_kind != 'SIROp':
             continue
         op_def = xgen_def.resolve(defs)
-        name_snake_case = camel_to_snake_case(op_def.class_name)
-        if name_snake_case.endswith('_op'):
-            name_snake_case = name_snake_case[:-3]
-        ofs.write('    register_{}_op(ctx);\n'.format(name_snake_case))
+        ofs.write('    register_{}_op(ctx);\n'.format(op_def.name_snake_case))
         if op_def.has_constant_builder:
             ofs.write('    ctx.register_constant_builder({}::build_constant);\n'.format(op_def.class_name))
     ofs.write('}\n\n')
@@ -586,6 +653,12 @@ impl<'a> OperationImpl<'a> for {class_name}<'a> {{
 
 '''
 
+COPE_OPDEF_GETTER_ATTR = '''
+    pub fn get_{name}_attr(&self) -> &'a Attribute {{
+        self.get_attr({attr_sym_name}).expect("Missing `{name}` attribute")
+    }}
+
+'''
 
 CODE_OPDEF_GETTER_BLOCK = '''
     pub fn get_{name}(&self) -> Block<'a> {{
@@ -684,5 +757,21 @@ impl OpInterfaceBuilder for {op_name}{interface_name}InterfaceImpl {{
         Box::new(wrapper)
     }}
 }}
+
+'''
+
+CODE_OPDEF_DEFAULT_CUSTOM_PRINT_FUN = '''
+    pub fn custom_print(&self, printer: &mut IRPrinter) -> Result<(), std::io::Error> {
+        printer.print_op_generic_form_impl(self.generic())
+    }
+
+'''
+
+CODE_OPDEF_DEFAULT_CUSTOM_PARSE_FUN = '''
+    pub fn custom_parse(parser: &mut IRParser, _ctx: &mut IRContext, _st: &mut OperationParserState) -> Option<()> {
+        let loc = parser.get_last_token_loc();
+        emit_error(parser, &loc, format!("custom form representation not supported"));
+        None
+    }
 
 '''

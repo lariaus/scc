@@ -217,7 +217,7 @@ fn test_verify_invalid_type() {
     b.create_op(loc, TestReturnOp::_build(vec![res]));
 
     assert_eq!(verify_op(ctx.get_generic_operation(fun_op)).diagnostics_to_string(CompilerInputs::Unknown),
-    "IRVerifier: Error: Input #0 (lhs) must be of type `Integer`, but got f32 at I#0:0:0\n  See %0 = \"test.add\"(%arg0, %arg1) : (f32, f32) -> (f32).\nIRVerifier: Error: Input #1 (rhs) must be of type `Integer`, but got f32 at I#0:0:0\n  See %0 = \"test.add\"(%arg0, %arg1) : (f32, f32) -> (f32).\nIRVerifier: Error: Output #0 (result) must be of type `Integer`, but got f32 at I#0:0:0\n  See %0 = \"test.add\"(%arg0, %arg1) : (f32, f32) -> (f32).\n");
+    "IRVerifier: Error: Input #0 (lhs) must be of type `Integer`, but got f32 at I#0:0:0\n  See %0 = \"test.add\"(%arg0, %arg1) : (f32, f32) -> (f32).\n");
 }
 
 #[test]

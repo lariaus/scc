@@ -1,0 +1,38 @@
+// XTEST: sir-opt --legalize-to-low-level
+// XTEST-OUTPUT-CHECK
+
+module {
+
+// CHECK: function @load_i32(%arg0: ptr<i32>) -> (i32)
+// CHECK-NEXT: %0 = lir.load %arg0 : ptr<i32>
+// CHECK-NEXT: return %0 : i32
+function @load_i32(%arg0: ptr<i32>) -> (i32) {
+    %0 = "mem.load"(%arg0) : (ptr<i32>) -> (i32)
+    return %0 : i32
+}
+
+// CHECK: function @load_si32(%arg0: ptr<i32>) -> (i32)
+// CHECK-NEXT: %0 = lir.load %arg0 : ptr<i32>
+// CHECK-NEXT: return %0 : i32
+function @load_si32(%arg0: ptr<si32>) -> (si32) {
+    %0 = "mem.load"(%arg0) : (ptr<si32>) -> (si32)
+    return %0 : si32
+}
+
+// CHECK: function @store_si32(%arg0: ptr<i32>, %arg1: i32)
+// CHECK-NEXT: lir.store %arg1, %arg0 : ptr<i32>
+// CHECK-NEXT: return
+function @store_si32(%arg0: ptr<si32>, %arg1: si32) -> () {
+    "mem.store"(%arg1, %arg0) : (si32, ptr<si32>) -> ()
+    return 
+}
+
+// CHECK: function @alloca_si32() -> (ptr<i32>)
+// CHECK-NEXT: %0 = lir.alloca ptr<i32>, align 4
+// CHECK-NEXT: return %0 : ptr<i32>
+function @alloca_si32() -> (ptr<si32>) {
+    %0 = "mem.alloca"() {"align" = 4: i64} : () -> (ptr<si32>)
+    return %0 : ptr<si32>
+}
+
+}

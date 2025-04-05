@@ -69,12 +69,23 @@
 - [DONE] Create sir_runner lib that can be used somehow through unit tests to run and check functions (through many means, interpreter things) 
 - [DONE] Create sir-runner binary to run any program through sir.
 - [DONE] Add unit test running the interpreter.
-- Add a pass to lower CAST to SIR
-- Add unit tests for the lowering for a basic add.
-- Add some new library with pipelines to lower any SIR program to LIR.
-- Add unit tests for the full lowering.
-- Add a new binary scc-runner that can run a C program.
-- Add unit tests for scc-runner to run a basic add through the interpreter.
+- [DONE] Add mem dialect and the load / store / alloca ops
+- [DONE] Add unit tests for them
+- [DONE] Add the same load / store / alloca ops to LIR dialect.
+- [DONE] Add unit tests for them
+- [DONE] Add lowerings from mem to sir
+- [DONE] Add unit tests for the lowerings
+- [DONE] Automatically generate a "new" methods for the ops (with option disable_default_builder)
+- [DONE] Add a pass to lower CAST to SIR
+- [DONE] Add unit tests for the lowering for a basic add.
+- [DONE] Add some new library with pipelines to lower any SIR program to LIR.
+- [DONE] Add unit tests for the full lowering.
+- [DONE] Define a new attribute to represent pointer values.
+- [DONE] Write the interpreter implementation for alloca, load, store with unit tests
+- [DONE] Add a new binary scc-runner that can run a C program.
+- [DONE] Add unit tests for scc-runner to run a basic add through the interpreter.
+- [DONE] Get rid of the warnings for the test ops.
+- [DONE] Search and add run examples for all binaries in the README file.
 - Add a new instruction selection mechanism and pass.
 - Add pass to do instruction selection to Apple-ARM.
 - Add unit test for a basic add.
@@ -99,9 +110,9 @@
 - Update binary scc-runner to go through the compiler.
 - Update scc-runner test system to go through the compiler.
 - Add unit test for a basic add.
-- Update scc binary to support taking a source c file and emitting AST IR.
-- Update scc binary to support taking a source c file and emitting high level SIR.
-- Update scc binary to support taking a source c file and emitting LIR.
+- [DONE] Update scc binary to support taking a source c file and emitting AST IR.
+- [DONE] Update scc binary to support taking a source c file and emitting high level SIR.
+- [DONE] Update scc binary to support taking a source c file and emitting LIR.
 - Update scc binary to support taking a source c file and ASM SIR.
 - Update scc binary to support taking a source c file and emitting ASM file.
 - Update scc binary to support taking a source c file and emitting object binary.
@@ -141,3 +152,15 @@ Divide IRContent between IR Nodes and Op Infos:
 - @TODO[I6][SIR-FUNC]: Replace math.constant with generic.constant.
 
 - @TODO[I7][XTEST]: Avoid cloning all annotations for each TestConfig and just pass them around.
+
+- @TODO[I8][SIR-CORE]: Find consistent way to register ops / transforms which avoids duplicate registrations.
+
+- @TODO[I9][SIR-INTERPRETER]: Make the Interpreter memory safe.
+    SIR represents a IR / language without safety guarantees.
+    Instead we should have the interpreter ensuring every potentially operation we do is actually safe.
+    I don't know if this is even possible / worth it.
+
+- @TODO[I10][SIR-INTERPRETER]: Use real types instead of Attributes in the interpreter.
+    Currently we use Attributes to represent all values in the interpreter.
+    First, it's slow.
+    Second, it'll give us incorrect results / crashes if the IR is doing weird things with the pointers.

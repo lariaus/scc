@@ -455,6 +455,69 @@ impl IRParsableObject for TypeAttr {
     }
 }
 
+// Represent any constant pointer value.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct PointerAttr {
+    val: usize,
+    ty: Type,
+}
+
+impl PointerAttr {
+    pub fn new(val: usize, ty: Type) -> Attribute {
+        assert!(ty.is_ptr(), "PointerAttr must have a pointer type");
+        Attribute::Ptr(Self { val, ty })
+    }
+
+    pub fn val(&self) -> usize {
+        self.val
+    }
+}
+
+impl AttributeSubClass for PointerAttr {
+    fn is_of_type(attr: &Attribute) -> bool {
+        match attr {
+            Attribute::Ptr(_) => true,
+            _ => false,
+        }
+    }
+
+    fn downcast_to_self<'a>(attr: &'a Attribute) -> Option<&'a Self> {
+        match attr {
+            Attribute::Ptr(attr) => Some(attr),
+            _ => None,
+        }
+    }
+
+    fn get_typename() -> &'static str {
+        "Pointer"
+    }
+
+    fn get_type(&self) -> Option<&Type> {
+        Some(&self.ty)
+    }
+}
+
+impl IRPrintableObject for PointerAttr {
+    fn print(&self, printer: &mut IRPrinter) -> Result<(), std::io::Error> {
+        write!(printer.os(), "#ptr<0x{:x}>: ", self.val())?;
+        printer.print(&self.ty)
+    }
+}
+
+impl IRParsableObject for PointerAttr {
+    fn parse(parser: &mut crate::ir_parser::IRParser) -> Option<Self> {
+        parser.consume_sym_or_error(TokenValue::sym_hash())?;
+        parser.consume_identifier_val_or_error("ptr")?;
+        parser.consume_sym_or_error(TokenValue::sym_lt())?;
+
+        let ptr_val = parser.consume_int_or_error()?.get_int().unwrap() as usize;
+        parser.consume_sym_or_error(TokenValue::sym_gt())?;
+        parser.consume_sym_or_error(TokenValue::sym_colon())?;
+        let ty = Type::parse(parser)?;
+        Some(PointerAttr { val: ptr_val, ty })
+    }
+}
+
 // Represent all possible Attributes in the IR.
 #[derive(Debug, Clone, PartialEq, Hash)]
 pub enum Attribute {
@@ -464,6 +527,7 @@ pub enum Attribute {
     Array(ArrayAttr),
     Dict(DictAttr),
     Type(TypeAttr),
+    Ptr(PointerAttr),
 }
 
 impl Attribute {
@@ -509,6 +573,13 @@ impl Attribute {
         }
     }
 
+    pub fn is_ptr(&self) -> bool {
+        match self {
+            Attribute::Ptr(_) => true,
+            _ => false,
+        }
+    }
+
     /// Returns the type of the attribute.
     /// Or None if the type isn't typed
     pub fn get_type(&self) -> Option<&Type> {
@@ -519,6 +590,7 @@ impl Attribute {
             Attribute::Array(attr) => attr.get_type(),
             Attribute::Dict(attr) => attr.get_type(),
             Attribute::Type(attr) => attr.get_type(),
+            Attribute::Ptr(attr) => attr.get_type(),
         }
     }
 
@@ -543,6 +615,7 @@ impl IRPrintableObject for Attribute {
             Attribute::Array(attr) => attr.print(printer),
             Attribute::Dict(attr) => attr.print(printer),
             Attribute::Type(attr) => attr.print(printer),
+            Attribute::Ptr(attr) => attr.print(printer),
         }
     }
 }
@@ -563,6 +636,24 @@ impl IRParsableObject for Attribute {
             Some(Attribute::Dict(DictAttr::parse(parser)?))
         } else if token_is_start_of_type(parser.peek_token()) {
             Some(Attribute::Type(TypeAttr::parse(parser)?))
+        } else if parser.next_token_is_sym(TokenValue::sym_hash()) {
+            // Get the attr name and restore the state.
+            let st = parser.save_parser_state();
+            parser.consume_sym_or_error(TokenValue::sym_hash());
+            let attr_id = parser
+                .consume_identifier_or_error()?
+                .get_identifier()
+                .unwrap()
+                .to_owned();
+            parser.restore_parser_state(st);
+
+            if attr_id == "ptr" {
+                Some(Attribute::Ptr(PointerAttr::parse(parser)?))
+            } else {
+                let err_tok = parser.peek_token().clone();
+                parser.emit_bad_token_error(&err_tok, format!("attribute value"));
+                None
+            }
         } else {
             let err_tok = parser.peek_token().clone();
             parser.emit_bad_token_error(&err_tok, format!("attribute value"));
@@ -573,7 +664,7 @@ impl IRParsableObject for Attribute {
 
 #[cfg(test)]
 mod tests {
-    use crate::types::{ArrayType, FloatType, IntegerType};
+    use crate::types::{ArrayType, FloatType, IntegerType, PointerType};
 
     use super::*;
 
@@ -677,5 +768,17 @@ mod tests {
             Attribute::from_string_repr("array<i32; 42>".to_owned())
         );
         check_same_repr("array<i32; 42>");
+    }
+
+    #[test]
+    fn test_ptr_print_parse() {
+        let ptr_ty = PointerType::new(IntegerType::new(32, None));
+        let attr = PointerAttr::new(43, ptr_ty);
+        assert_eq!(attr.to_string_repr(), "#ptr<0x2b>: ptr<i32>");
+        assert_eq!(
+            attr,
+            Attribute::from_string_repr("#ptr<0x2b>: ptr<i32>".to_owned())
+        );
+        check_same_repr("#ptr<0x33fb23>: ptr<i32>");
     }
 }

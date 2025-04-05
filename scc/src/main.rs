@@ -1,27 +1,52 @@
-use std::{env, process::exit};
+use std::{path::PathBuf, process::exit};
 
-use cast::parser::CParser;
-use diagnostics::diagnostics::CompilerInputs;
-use iostreams::source_streams_set::SourceStreamsSet;
+use clap::Parser;
+use scclib::scc_compiler::{OutputTarget, SCCCompiler, SCCCompilerOptions, SRCCResult};
+
+#[derive(clap::Parser)]
+#[command(version, about, long_about = None)]
+struct Cli {
+    /// Input file path
+    input: PathBuf,
+
+    #[arg(long, action)]
+    emit_cast: bool,
+
+    #[arg(long, action)]
+    emit_sir: bool,
+
+    #[arg(long, action)]
+    emit_lir: bool,
+}
+
+fn handle_err<T>(res: SRCCResult<T>) -> T {
+    match res {
+        Ok(res) => res,
+        Err(err) => {
+            eprintln!("scc: error: {}", err);
+            exit(1);
+        }
+    }
+}
 
 fn main() {
-    let args: Vec<_> = env::args().collect();
-    assert!(args.len() == 3);
+    // Parse the opts;
+    let cli = Cli::parse();
 
-    let src_file = args[2].clone();
+    // Prepare the compiler
+    let scc_opts = SCCCompilerOptions::new();
+    let mut scc = SCCCompiler::new(scc_opts);
+    let src_file = cli.input.to_str().unwrap();
+    scc.set_inputs_paths(&[src_file]);
 
-    // Prepare the args.
-    let mut ss = SourceStreamsSet::new();
-    let src_file = ss.add_source_file(&src_file);
-
-    // Parse the file
-    let parser = CParser::new(ss.open_stream(src_file));
-    let ast = parser.parse();
-    let ast = match ast.resolve(CompilerInputs::Sources(&ss)) {
-        Some(ast) => ast,
-        None => exit(1),
-    };
-
-    // Dump the IR.
-    ast.dump();
+    // Emit the requested output.
+    if cli.emit_cast {
+        handle_err(scc.emit_cast(OutputTarget::Stdout));
+    } else if cli.emit_sir {
+        handle_err(scc.emit_sir(OutputTarget::Stdout));
+    } else if cli.emit_lir {
+        handle_err(scc.emit_lir(OutputTarget::Stdout));
+    } else {
+        todo!("Compilation not supported")
+    }
 }

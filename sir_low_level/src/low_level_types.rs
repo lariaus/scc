@@ -1,7 +1,7 @@
 use sir_core::{
     attributes::{Attribute, FloatAttr, IntegerAttr},
     type_converter::TypeConverter,
-    types::{FloatType, FunctionType, IntegerType, Type},
+    types::{FloatType, FunctionType, IntegerType, PointerType, Type},
 };
 
 pub fn is_valid_scalar_int_type(ty: &IntegerType) -> bool {
@@ -59,6 +59,7 @@ pub fn is_valid_type(ty: &Type) -> bool {
         Type::Int(ty) => is_valid_scalar_int_type(ty),
         Type::Float(ty) => is_valid_scalar_float_type(ty),
         Type::Function(ty) => is_valid_function_type(ty),
+        Type::Ptr(ty) => is_valid_type(ty.element()),
         _ => false,
     }
 }
@@ -71,6 +72,7 @@ impl TypeConverter for LowLevelTypeConverter {
             Type::Int(ty) => self.convert_int_ty(ty),
             Type::Float(ty) => self.convert_fp_ty(ty),
             Type::Function(ty) => self.convert_function_ty(ty),
+            Type::Ptr(ty) => self.convert_ptr_ty(ty),
             _ => None,
         }
     }
@@ -108,6 +110,10 @@ impl LowLevelTypeConverter {
         }
 
         Some(FunctionType::new(new_arguments, new_results))
+    }
+
+    pub fn convert_ptr_ty(&self, ty: &PointerType) -> Option<Type> {
+        Some(PointerType::new(self.convert_type(ty.element())?))
     }
 }
 

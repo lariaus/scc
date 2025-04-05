@@ -22,7 +22,7 @@ function @fail_add_fp(%arg0: f32, %arg1: f32) -> (f32) {
 }
 
 
-// CHECK: Error: All inputs and outputs of math.iadd must have the same type
+// CHECK: Error: Input #1 (rhs) must be of type `Integer`, but got f32
 // CHECK-NEXT: %0 = "math.iadd"(%arg0, %arg1) : (i32, f32) -> (i32)
 function @fail_add_invalid_operand(%arg0: i32, %arg1: f32) -> (i32) {
     %0 = "math.iadd"(%arg0, %arg1) : (i32, f32) -> (i32)

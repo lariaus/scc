@@ -1,0 +1,38 @@
+// XTEST: sir-opt
+// XTEST-OUTPUT-CHECK
+
+module {
+
+// CHECK-NOT: Error
+function @alloca_ok() -> () {
+    %0 = "lir.alloca"() {"align" = 4: i64} : () -> (ptr<i32>)
+    return
+}
+
+function @alloca_custom_ok() -> () {
+    %0 = lir.alloca ptr<i32>, align 4
+    return
+}
+
+// CHECK: Output #0 (result) must be of type `Pointer`, but got i32
+// CHECK-NEXT: %0 = "lir.alloca"() {"align" = 4: i64} : () -> (i32)
+function @alloca_not_ptr() -> () {
+    %0 = "lir.alloca"() {"align" = 4: i64} : () -> (i32)
+    return
+}
+
+// CHECK: Error: Missing required attribute `align`
+// CHECK-NEXT: %0 = "lir.alloca"() : () -> (ptr<i32>)
+function @alloca_no_align() -> () {
+    %0 = "lir.alloca"() : () -> (ptr<i32>)
+    return
+}
+
+// CHECK: Error: Required attribute `align` must be a index type, but got 4: si64
+// CHECK-NEXT: %0 = "lir.alloca"() {"align" = 4: si64} : () -> (ptr<i32>)
+function @alloca_align_not_index() -> () {
+    %0 = "lir.alloca"() {"align" = 4: si64} : () -> (ptr<i32>)
+    return
+}
+
+}

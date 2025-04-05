@@ -1,0 +1,31 @@
+// XTEST: sir-opt
+// XTEST-OUTPUT-CHECK
+
+module {
+
+// CHECK-NOT: Error
+function @store_ok(%arg0: ptr<i32>, %arg1: i32) -> () {
+    "lir.store"(%arg1, %arg0) : (i32, ptr<i32>) -> ()
+    return
+}
+
+function @store_custom_ok(%arg0: ptr<i32>, %arg1: i32) -> () {
+    lir.store %arg1, %arg0 : ptr<i32>
+    return
+}
+
+// CHECK: Error: Input #1 (ptr) must be of type `Pointer`, but got i32 
+// CHECK-NEXT: "lir.store"(%arg1, %arg0) : (i32, i32) -> ()
+function @store_not_pr(%arg0: i32, %arg1: i32) -> () {
+    "lir.store"(%arg1, %arg0) : (i32, i32) -> ()
+    return
+}
+
+// CHECK: Error: Pointer element type si32 differs from value type i32
+// CHECK-NEXT: "lir.store"(%arg1, %arg0) : (i32, ptr<si32>) -> ()
+function @store_invalid_ptr(%arg0: ptr<si32>, %arg1: i32) -> () {
+    "lir.store"(%arg1, %arg0) : (i32, ptr<si32>) -> ()
+    return
+}
+
+}

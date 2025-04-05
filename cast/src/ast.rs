@@ -7,7 +7,7 @@ use utils::stringutils::encode_string_literal;
 use crate::{
     ast_printer::{ASTPrinter, ASTPrinterOptions},
     ast_types::Type,
-    ast_vistors::MutableASTVisitor,
+    ast_vistors::{ASTVisitor, MutableASTVisitor},
 };
 
 ////////////////////////////////////////////////
@@ -59,7 +59,7 @@ impl ASTTypeDecl {
 }
 
 // Unique identifier for the variable declarations.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ASTVarDeclUID(usize);
 
 static AST_VAR_DECL_UID_COUNTER: CounterUsize = CounterUsize::new(0);
@@ -204,7 +204,13 @@ impl ASTNode {
         self.get_kind() == ASTNodeKind::Type
     }
 
+    // Visit the node (might mutable the AST).
     pub fn visit_mut<V: MutableASTVisitor>(&mut self, visitor: &mut V) {
+        visitor.visit_generic_node(self);
+    }
+
+    // Visit the node.
+    pub fn visit<V: ASTVisitor>(&self, visitor: &mut V) {
         visitor.visit_generic_node(self);
     }
 }

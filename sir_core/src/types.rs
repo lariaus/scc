@@ -30,9 +30,22 @@ pub struct IntegerType {
     signed: Option<bool>,
 }
 
+pub const INTEGER_SIZE_TYPE_BITWIDTH: usize = 64;
+
 impl IntegerType {
+    /// Creates a new IntegerType Type object.
     pub fn new(bitwidth: usize, signed: Option<bool>) -> Type {
         Type::Int(Self { bitwidth, signed })
+    }
+
+    /// Creates the index type.
+    pub fn index_type() -> Type {
+        IntegerType::new(INTEGER_SIZE_TYPE_BITWIDTH, None)
+    }
+
+    /// Returns true if the current type is the index type.
+    pub fn is_index_type(&self) -> bool {
+        self.signed.is_none() && self.bitwidth == INTEGER_SIZE_TYPE_BITWIDTH
     }
 
     pub fn bitwidth(&self) -> usize {
@@ -117,6 +130,18 @@ impl IRParsableObject for IntegerType {
 pub enum FloatType {
     F32,
     F64,
+}
+
+impl FloatType {
+    /// Build a f32 type.
+    pub fn f32() -> Type {
+        Type::Float(FloatType::F32)
+    }
+
+    /// Build a f64 type.
+    pub fn f64() -> Type {
+        Type::Float(FloatType::F64)
+    }
 }
 
 impl TypeSubClass for FloatType {

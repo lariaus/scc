@@ -28,6 +28,8 @@ pub struct SIROptRunner {
     print_ir_after_all_passes: bool,
     print_ir_before_pass: Option<String>,
     print_ir_after_pass: Option<String>,
+    pre_pipeline_builder: Option<Box<dyn FnOnce(&mut PassManager) -> ()>>,
+    post_pipeline_builder: Option<Box<dyn FnOnce(&mut PassManager) -> ()>>,
     ctx: Option<IRContext>,
     ap: ArgumentsParser,
 }
@@ -48,6 +50,8 @@ impl SIROptRunner {
             print_ir_after_all_passes: false,
             print_ir_before_pass: None,
             print_ir_after_pass: None,
+            pre_pipeline_builder: None,
+            post_pipeline_builder: None,
             ctx: None,
             ap: ArgumentsParser::new(bin_name, description, version),
         }
@@ -115,6 +119,24 @@ impl SIROptRunner {
     // If true, print the IR after running the specified pass.
     pub fn set_print_ir_after_pass(&mut self, print_ir_after_pass: String) {
         self.print_ir_after_pass = Some(print_ir_after_pass);
+    }
+
+    /// Set a function that will be called to setup the passes run by the PassManager.
+    /// Will be called before the passes set automatically be the arguments.
+    pub fn set_pre_pipeline_builder<Fn: FnOnce(&mut PassManager) -> () + 'static>(
+        &mut self,
+        builder: Fn,
+    ) {
+        self.pre_pipeline_builder = Some(Box::new(builder));
+    }
+
+    /// Set a function that will be called to setup the passes run by the PassManager.
+    /// Will be called after the passes set automatically be the arguments.
+    pub fn set_post_pipeline_builder<Fn: FnOnce(&mut PassManager) -> () + 'static>(
+        &mut self,
+        builder: Fn,
+    ) {
+        self.post_pipeline_builder = Some(Box::new(builder));
     }
 
     // Get the optional input file path.
@@ -295,6 +317,14 @@ impl SIROptRunner {
         }
         pm_opts.debug_mode = self.debug_mode;
         let mut pm = PassManager::new(pm_opts, &self.cs);
+
+        // Add pre passes.
+        let mut pre_preline_builder = None;
+        std::mem::swap(&mut pre_preline_builder, &mut self.pre_pipeline_builder);
+        if let Some(pre_pipeline_builder) = pre_preline_builder {
+            pre_pipeline_builder(&mut pm);
+        }
+
         // Add all the registered passes with the CLI.
         for arg in self.ap.get_parsed_args() {
             let name = &arg.argname()[2..];
@@ -302,6 +332,14 @@ impl SIROptRunner {
                 pm.add_pass_by_name(name);
             }
         }
+
+        // Add post passes.
+        let mut post_preline_builder = None;
+        std::mem::swap(&mut post_preline_builder, &mut self.post_pipeline_builder);
+        if let Some(post_pipeline_builder) = post_preline_builder {
+            post_pipeline_builder(&mut pm);
+        }
+
         let passes_runner = pm.make_runner();
 
         // Run the passes.

@@ -8,7 +8,7 @@ use iostreams::{
     location::Location, source_stream::SourceStream, source_streams_set::SourceStreamsSet,
 };
 use parse::{
-    lexer::{Lexer, TokenValue},
+    lexer::{Lexer, LexerPostion, TokenValue},
     parser::{self, Parser},
 };
 use utils::scoped_map::ScopedMap;
@@ -70,6 +70,16 @@ impl IRParser {
         res
     }
 
+    /// Returns the curent parser state, to restore it later.
+    pub fn save_parser_state(&mut self) -> LexerPostion {
+        self.lex.get_position()
+    }
+
+    /// Restore the parser state to a previous state.
+    pub fn restore_parser_state(&mut self, st: LexerPostion) {
+        self.lex.set_position(st);
+    }
+
     pub fn opts(&self) -> &IRParserOpts {
         &self.opts
     }
@@ -107,6 +117,7 @@ impl IRParser {
         self.lex.add_symbol_val(TokenValue::sym_xor());
         self.lex.add_symbol_val(TokenValue::sym_dot());
         self.lex.add_symbol_val(TokenValue::sym_at());
+        self.lex.add_symbol_val(TokenValue::sym_hash());
     }
 
     // Call every time you start parsing a block.

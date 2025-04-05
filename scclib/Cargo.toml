@@ -1,0 +1,11 @@
+[package]
+name = "scclib"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+cast = { path = "../cast" }
+diagnostics = { path = "../diagnostics" }
+iostreams = { path = "../iostreams" }
+sir_core = { path = "../sir_core" }
+sir_pipelines = { path = "../sir_pipelines" }

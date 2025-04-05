@@ -1,4 +1,4 @@
-use diagnostics::diagnostics::{emit_error, DiagnosticsEmitter};
+use diagnostics::diagnostics::{emit_error, DiagnosticsEmitter, ErrorOrSuccess};
 use iostreams::location::Location;
 use parse::lexer::TokenValue;
 use parse::parser::Parser;
@@ -31,6 +31,7 @@ use sir_core::{
 // @tags ["TAG_DECLS_BLOCK_OP"]
 // @+block "body"
 // @custom_print_parse
+// @disable_default_builder
 
 // @XGENBEGIN
 
@@ -78,7 +79,7 @@ impl BuiltinOpInterfaceImpl for TestModOpBuiltinOpInterfaceImpl {
         ctx: &'a IRContext,
         data: &'a OperationData,
         diagnostics: &mut DiagnosticsEmitter,
-    ) {
+    ) -> ErrorOrSuccess {
         GenericOperation::make_from_data(ctx, data)
             .cast::<TestModOp>()
             .unwrap()
@@ -119,10 +120,11 @@ impl OpInterfaceBuilder for TestModOpBuiltinOpInterfaceImpl {
 }
 
 impl<'a> TestModOp<'a> {
-    pub fn verify(&self, diagnostics: &mut DiagnosticsEmitter) {
-        ir_checks::verif_inputs_count(diagnostics, self.generic(), 0);
-        ir_checks::verif_outputs_count(diagnostics, self.generic(), 0);
-        ir_checks::verif_blocks_count(diagnostics, self.generic(), 1);
+    pub fn verify(&self, diagnostics: &mut DiagnosticsEmitter) -> ErrorOrSuccess {
+        ir_checks::verif_inputs_count(diagnostics, self.generic(), 0)?;
+        ir_checks::verif_outputs_count(diagnostics, self.generic(), 0)?;
+        ir_checks::verif_blocks_count(diagnostics, self.generic(), 1)?;
+        Ok(())
     }
     pub fn clone() -> BuiltinOpInterfaceImplWrapper {
         BuiltinOpInterfaceImplWrapper::new(Box::new(TestModOpBuiltinOpInterfaceImpl))
@@ -190,6 +192,7 @@ impl<'a> TestModOp<'a> {
 // @+block "body"
 // @verifier
 // @custom_print_parse
+// @disable_default_builder
 
 // @XGENBEGIN
 
@@ -258,7 +261,7 @@ impl BuiltinOpInterfaceImpl for TestFunOpBuiltinOpInterfaceImpl {
         ctx: &'a IRContext,
         data: &'a OperationData,
         diagnostics: &mut DiagnosticsEmitter,
-    ) {
+    ) -> ErrorOrSuccess {
         GenericOperation::make_from_data(ctx, data)
             .cast::<TestFunOp>()
             .unwrap()
@@ -299,21 +302,22 @@ impl OpInterfaceBuilder for TestFunOpBuiltinOpInterfaceImpl {
 }
 
 impl<'a> TestFunOp<'a> {
-    pub fn verify(&self, diagnostics: &mut DiagnosticsEmitter) {
-        ir_checks::verif_inputs_count(diagnostics, self.generic(), 0);
+    pub fn verify(&self, diagnostics: &mut DiagnosticsEmitter) -> ErrorOrSuccess {
+        ir_checks::verif_inputs_count(diagnostics, self.generic(), 0)?;
         ir_checks::verif_has_attr_of_type::<StringAttr>(
             diagnostics,
             self.generic(),
             TEST_FUN_ATTR_SYMBOL_NAME,
-        );
+        )?;
         ir_checks::verif_has_type_attr_of_type::<FunctionType>(
             diagnostics,
             self.generic(),
             TEST_FUN_ATTR_FUNCTION_TYPE,
-        );
-        ir_checks::verif_outputs_count(diagnostics, self.generic(), 0);
-        ir_checks::verif_blocks_count(diagnostics, self.generic(), 1);
-        self.verify_op(diagnostics)
+        )?;
+        ir_checks::verif_outputs_count(diagnostics, self.generic(), 0)?;
+        ir_checks::verif_blocks_count(diagnostics, self.generic(), 1)?;
+        self.verify_op(diagnostics)?;
+        Ok(())
     }
     pub fn clone() -> BuiltinOpInterfaceImplWrapper {
         BuiltinOpInterfaceImplWrapper::new(Box::new(TestFunOpBuiltinOpInterfaceImpl))
@@ -349,13 +353,13 @@ impl TestFunOp<'_> {
 
 // BuiltinOp interface implementation.
 impl<'a> TestFunOp<'a> {
-    pub fn verify_op(&self, diagnostics: &mut DiagnosticsEmitter) {
+    pub fn verify_op(&self, diagnostics: &mut DiagnosticsEmitter) -> ErrorOrSuccess {
         // Check the block operands types
         let fun_type = self.get_function_type();
         let body = self.get_body();
         if fun_type.num_arguments() != body.get_num_operands() {
             emit_error(diagnostics, &self.generic(), format!("Signature type mismatch: signature has {} operands but body block has {} operands", fun_type.num_arguments(), body.get_num_operands()));
-            return;
+            return Err(());
         }
 
         for (idx, (fun_ty, block_ty)) in fun_type
@@ -366,9 +370,11 @@ impl<'a> TestFunOp<'a> {
         {
             if fun_ty != block_ty {
                 emit_error(diagnostics, &self.generic(), format!("Signature type mismatch: block operand #{} has type {} but function signature operand type is {}", idx, block_ty.to_string_repr(), fun_ty.to_string_repr()));
-                return;
+                return Err(());
             }
         }
+
+        Ok(())
     }
 
     pub fn custom_print(&self, printer: &mut IRPrinter) -> Result<(), std::io::Error> {
@@ -489,6 +495,7 @@ impl<'a> TestFunOp<'a> {
 // @tags ["TAG_PURE_OP"]
 // @+mod SameInputsAndOutputsTypes
 // @custom_print_parse
+// @disable_default_builder
 
 // @XGENBEGIN
 
@@ -544,7 +551,7 @@ impl BuiltinOpInterfaceImpl for TestAddOpBuiltinOpInterfaceImpl {
         ctx: &'a IRContext,
         data: &'a OperationData,
         diagnostics: &mut DiagnosticsEmitter,
-    ) {
+    ) -> ErrorOrSuccess {
         GenericOperation::make_from_data(ctx, data)
             .cast::<TestAddOp>()
             .unwrap()
@@ -585,20 +592,21 @@ impl OpInterfaceBuilder for TestAddOpBuiltinOpInterfaceImpl {
 }
 
 impl<'a> TestAddOp<'a> {
-    pub fn verify(&self, diagnostics: &mut DiagnosticsEmitter) {
-        ir_checks::verif_inputs_count(diagnostics, self.generic(), 2);
-        ir_checks::verif_io_is_of_type::<IntegerType>(diagnostics, self.generic(), true, 0, "lhs");
-        ir_checks::verif_io_is_of_type::<IntegerType>(diagnostics, self.generic(), true, 1, "rhs");
-        ir_checks::verif_outputs_count(diagnostics, self.generic(), 1);
+    pub fn verify(&self, diagnostics: &mut DiagnosticsEmitter) -> ErrorOrSuccess {
+        ir_checks::verif_inputs_count(diagnostics, self.generic(), 2)?;
+        ir_checks::verif_io_is_of_type::<IntegerType>(diagnostics, self.generic(), true, 0, "lhs")?;
+        ir_checks::verif_io_is_of_type::<IntegerType>(diagnostics, self.generic(), true, 1, "rhs")?;
+        ir_checks::verif_outputs_count(diagnostics, self.generic(), 1)?;
         ir_checks::verif_io_is_of_type::<IntegerType>(
             diagnostics,
             self.generic(),
             false,
             0,
             "result",
-        );
-        ir_checks::verif_blocks_count(diagnostics, self.generic(), 0);
-        ir_checks::verif_same_input_output_types(diagnostics, self.generic());
+        )?;
+        ir_checks::verif_blocks_count(diagnostics, self.generic(), 0)?;
+        ir_checks::verif_same_input_output_types(diagnostics, self.generic())?;
+        Ok(())
     }
     pub fn clone() -> BuiltinOpInterfaceImplWrapper {
         BuiltinOpInterfaceImplWrapper::new(Box::new(TestAddOpBuiltinOpInterfaceImpl))
@@ -679,6 +687,7 @@ impl<'a> TestAddOp<'a> {
 // @tags ["TAG_TERMINATOR_OP"]
 // @verifier
 // @custom_print_parse
+// @disable_default_builder
 
 // @XGENBEGIN
 
@@ -723,7 +732,7 @@ impl BuiltinOpInterfaceImpl for TestReturnOpBuiltinOpInterfaceImpl {
         ctx: &'a IRContext,
         data: &'a OperationData,
         diagnostics: &mut DiagnosticsEmitter,
-    ) {
+    ) -> ErrorOrSuccess {
         GenericOperation::make_from_data(ctx, data)
             .cast::<TestReturnOp>()
             .unwrap()
@@ -764,10 +773,11 @@ impl OpInterfaceBuilder for TestReturnOpBuiltinOpInterfaceImpl {
 }
 
 impl<'a> TestReturnOp<'a> {
-    pub fn verify(&self, diagnostics: &mut DiagnosticsEmitter) {
-        ir_checks::verif_outputs_count(diagnostics, self.generic(), 0);
-        ir_checks::verif_blocks_count(diagnostics, self.generic(), 0);
-        self.verify_op(diagnostics)
+    pub fn verify(&self, diagnostics: &mut DiagnosticsEmitter) -> ErrorOrSuccess {
+        ir_checks::verif_outputs_count(diagnostics, self.generic(), 0)?;
+        ir_checks::verif_blocks_count(diagnostics, self.generic(), 0)?;
+        self.verify_op(diagnostics)?;
+        Ok(())
     }
     pub fn clone() -> BuiltinOpInterfaceImplWrapper {
         BuiltinOpInterfaceImplWrapper::new(Box::new(TestReturnOpBuiltinOpInterfaceImpl))
@@ -797,11 +807,11 @@ impl TestReturnOp<'_> {
 
 // BuiltinOp interface implementation.
 impl<'a> TestReturnOp<'a> {
-    pub fn verify_op(&self, diagnostics: &mut DiagnosticsEmitter) {
+    pub fn verify_op(&self, diagnostics: &mut DiagnosticsEmitter) -> ErrorOrSuccess {
         // Get the function signature of the parent.
         let fun_op = match self.parent_op() {
             Some(x) => x,
-            None => return,
+            None => return Ok(()),
         };
         let fun_type = match fun_op.cast::<TestFunOp>() {
             Some(fun_op) => fun_op.get_function_type(),
@@ -811,7 +821,7 @@ impl<'a> TestReturnOp<'a> {
                     &self.generic(),
                     format!("ReturnOp parent must be a TestFunOp"),
                 );
-                return;
+                return Err(());
             }
         };
 
@@ -826,7 +836,7 @@ impl<'a> TestReturnOp<'a> {
                     self.get_num_inputs()
                 ),
             );
-            return;
+            return Err(());
         }
         for (idx, (fun_ty, ret_ty)) in fun_type
             .results()
@@ -837,8 +847,11 @@ impl<'a> TestReturnOp<'a> {
             if fun_ty != ret_ty {
                 emit_error(diagnostics, &self.generic(), format!("Function signature result type #{} is {}, but the return value #{} is of type {}", 
                     idx, fun_ty.to_string_repr(), idx, ret_ty.to_string_repr()));
+                return Err(());
             }
         }
+
+        Ok(())
     }
 
     pub fn custom_print(&self, printer: &mut IRPrinter) -> Result<(), std::io::Error> {

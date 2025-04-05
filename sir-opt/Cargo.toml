@@ -10,3 +10,4 @@ sir_interpreter = { path = "../sir_interpreter" }
 sir_lir = { path = "../sir_lir" }
 sir_low_level = { path = "../sir_low_level" }
 sir_math = { path = "../sir_math" }
+sir_mem = { path = "../sir_mem" }

@@ -1,4 +1,4 @@
-use diagnostics::diagnostics::{emit_error, DiagnosticsEmitter};
+use diagnostics::diagnostics::{emit_error, DiagnosticsEmitter, ErrorOrSuccess};
 use iostreams::location::Location;
 use parse::lexer::TokenValue;
 use parse::parser::Parser;
@@ -26,7 +26,7 @@ use sir_interpreter::{
     interfaces::{
         InterpretableOp, InterpretableOpInterfaceImpl, InterpretableOpInterfaceImplWrapper,
     },
-    interpreter::SIRInterpreter,
+    interpreter::{InstructionAddress, SIRInterpreter},
 };
 use sir_low_level::{
     interfaces::{
@@ -46,6 +46,7 @@ use sir_low_level::{
 // @tags ["TAG_DECLS_BLOCK_OP", "TAG_LOW_LEVEL_OP"]
 // @+block "body"
 // @custom_print_parse
+// @disable_default_builder
 
 // @XGENBEGIN
 
@@ -93,7 +94,7 @@ impl BuiltinOpInterfaceImpl for ModuleOpBuiltinOpInterfaceImpl {
         ctx: &'a IRContext,
         data: &'a OperationData,
         diagnostics: &mut DiagnosticsEmitter,
-    ) {
+    ) -> ErrorOrSuccess {
         GenericOperation::make_from_data(ctx, data)
             .cast::<ModuleOp>()
             .unwrap()
@@ -134,10 +135,11 @@ impl OpInterfaceBuilder for ModuleOpBuiltinOpInterfaceImpl {
 }
 
 impl<'a> ModuleOp<'a> {
-    pub fn verify(&self, diagnostics: &mut DiagnosticsEmitter) {
-        ir_checks::verif_inputs_count(diagnostics, self.generic(), 0);
-        ir_checks::verif_outputs_count(diagnostics, self.generic(), 0);
-        ir_checks::verif_blocks_count(diagnostics, self.generic(), 1);
+    pub fn verify(&self, diagnostics: &mut DiagnosticsEmitter) -> ErrorOrSuccess {
+        ir_checks::verif_inputs_count(diagnostics, self.generic(), 0)?;
+        ir_checks::verif_outputs_count(diagnostics, self.generic(), 0)?;
+        ir_checks::verif_blocks_count(diagnostics, self.generic(), 1)?;
+        Ok(())
     }
     pub fn clone() -> BuiltinOpInterfaceImplWrapper {
         BuiltinOpInterfaceImplWrapper::new(Box::new(ModuleOpBuiltinOpInterfaceImpl))
@@ -207,6 +209,7 @@ impl<'a> ModuleOp<'a> {
 // @interfaces [ConditionallyLowLevelOp, SymbolOp, InterpretableOp]
 // @verifier
 // @custom_print_parse
+// @disable_default_builder
 
 // @XGENBEGIN
 
@@ -250,6 +253,11 @@ impl<'a> FunctionOp<'a> {
             .val()
     }
 
+    pub fn get_symbol_name_attr(&self) -> &'a Attribute {
+        self.get_attr(FUNCTION_ATTR_SYMBOL_NAME)
+            .expect("Missing `symbol_name` attribute")
+    }
+
     pub fn get_function_type(&self) -> &'a FunctionType {
         self.get_attr(FUNCTION_ATTR_FUNCTION_TYPE)
             .expect("Missing `function_type` attribute")
@@ -258,6 +266,11 @@ impl<'a> FunctionOp<'a> {
             .val()
             .cast::<FunctionType>()
             .expect("`function_type` type attribute must be a FunctionType")
+    }
+
+    pub fn get_function_type_attr(&self) -> &'a Attribute {
+        self.get_attr(FUNCTION_ATTR_FUNCTION_TYPE)
+            .expect("Missing `function_type` attribute")
     }
 
     pub fn get_body(&self) -> Block<'a> {
@@ -275,7 +288,7 @@ impl BuiltinOpInterfaceImpl for FunctionOpBuiltinOpInterfaceImpl {
         ctx: &'a IRContext,
         data: &'a OperationData,
         diagnostics: &mut DiagnosticsEmitter,
-    ) {
+    ) -> ErrorOrSuccess {
         GenericOperation::make_from_data(ctx, data)
             .cast::<FunctionOp>()
             .unwrap()
@@ -396,21 +409,22 @@ impl OpInterfaceBuilder for FunctionOpInterpretableOpInterfaceImpl {
 }
 
 impl<'a> FunctionOp<'a> {
-    pub fn verify(&self, diagnostics: &mut DiagnosticsEmitter) {
-        ir_checks::verif_inputs_count(diagnostics, self.generic(), 0);
+    pub fn verify(&self, diagnostics: &mut DiagnosticsEmitter) -> ErrorOrSuccess {
+        ir_checks::verif_inputs_count(diagnostics, self.generic(), 0)?;
         ir_checks::verif_has_attr_of_type::<StringAttr>(
             diagnostics,
             self.generic(),
             FUNCTION_ATTR_SYMBOL_NAME,
-        );
+        )?;
         ir_checks::verif_has_type_attr_of_type::<FunctionType>(
             diagnostics,
             self.generic(),
             FUNCTION_ATTR_FUNCTION_TYPE,
-        );
-        ir_checks::verif_outputs_count(diagnostics, self.generic(), 0);
-        ir_checks::verif_blocks_count(diagnostics, self.generic(), 1);
-        self.verify_op(diagnostics)
+        )?;
+        ir_checks::verif_outputs_count(diagnostics, self.generic(), 0)?;
+        ir_checks::verif_blocks_count(diagnostics, self.generic(), 1)?;
+        self.verify_op(diagnostics)?;
+        Ok(())
     }
     pub fn clone() -> BuiltinOpInterfaceImplWrapper {
         BuiltinOpInterfaceImplWrapper::new(Box::new(FunctionOpBuiltinOpInterfaceImpl))
@@ -448,13 +462,13 @@ impl FunctionOp<'_> {
 
 // BuiltinOp interface implementation.
 impl<'a> FunctionOp<'a> {
-    pub fn verify_op(&self, diagnostics: &mut DiagnosticsEmitter) {
+    pub fn verify_op(&self, diagnostics: &mut DiagnosticsEmitter) -> ErrorOrSuccess {
         // Check the block operands types
         let fun_type = self.get_function_type();
         let body = self.get_body();
         if fun_type.num_arguments() != body.get_num_operands() {
             emit_error(diagnostics, &self.generic(), format!("Signature type mismatch: signature has {} operands but body block has {} operands", fun_type.num_arguments(), body.get_num_operands()));
-            return;
+            return Err(());
         }
 
         for (idx, (fun_ty, block_ty)) in fun_type
@@ -465,9 +479,11 @@ impl<'a> FunctionOp<'a> {
         {
             if fun_ty != block_ty {
                 emit_error(diagnostics, &self.generic(), format!("Signature type mismatch: block operand #{} has type {} but function signature operand type is {}", idx, block_ty.to_string_repr(), fun_ty.to_string_repr()));
-                return;
+                return Err(());
             }
         }
+
+        Ok(())
     }
 
     pub fn custom_print(&self, printer: &mut IRPrinter) -> Result<(), std::io::Error> {
@@ -599,9 +615,6 @@ impl<'a> FunctionOp<'a> {
 // InterpretableOp interface implementation.
 impl<'a> FunctionOp<'a> {
     pub fn interpret(&self, interpreter: &mut SIRInterpreter) {
-        // Open a new scope.
-        interpreter.open_values_scope();
-
         // Prepare the inputs.
         let inputs_attrs = interpreter.take_function_inputs();
         let block = self.get_body();
@@ -614,11 +627,13 @@ impl<'a> FunctionOp<'a> {
             );
         }
         for (input_val, input_attr) in block.get_operands().zip(inputs_attrs) {
-            interpreter.assign_value(input_val, input_attr);
+            interpreter.set_value(input_val, input_attr);
         }
 
         // Set the executor to the start of the function.
-        interpreter.set_pc_to_op(block.get_ops().next().unwrap().as_id());
+        interpreter.set_pc(InstructionAddress::Operation(
+            block.get_ops().next().unwrap().as_id(),
+        ));
     }
 }
 
@@ -633,6 +648,7 @@ impl<'a> FunctionOp<'a> {
 // @interfaces [InterpretableOp]
 // @verifier
 // @custom_print_parse
+// @disable_default_builder
 
 // @XGENBEGIN
 
@@ -676,7 +692,7 @@ impl BuiltinOpInterfaceImpl for ReturnOpBuiltinOpInterfaceImpl {
         ctx: &'a IRContext,
         data: &'a OperationData,
         diagnostics: &mut DiagnosticsEmitter,
-    ) {
+    ) -> ErrorOrSuccess {
         GenericOperation::make_from_data(ctx, data)
             .cast::<ReturnOp>()
             .unwrap()
@@ -745,10 +761,11 @@ impl OpInterfaceBuilder for ReturnOpInterpretableOpInterfaceImpl {
 }
 
 impl<'a> ReturnOp<'a> {
-    pub fn verify(&self, diagnostics: &mut DiagnosticsEmitter) {
-        ir_checks::verif_outputs_count(diagnostics, self.generic(), 0);
-        ir_checks::verif_blocks_count(diagnostics, self.generic(), 0);
-        self.verify_op(diagnostics)
+    pub fn verify(&self, diagnostics: &mut DiagnosticsEmitter) -> ErrorOrSuccess {
+        ir_checks::verif_outputs_count(diagnostics, self.generic(), 0)?;
+        ir_checks::verif_blocks_count(diagnostics, self.generic(), 0)?;
+        self.verify_op(diagnostics)?;
+        Ok(())
     }
     pub fn clone() -> BuiltinOpInterfaceImplWrapper {
         BuiltinOpInterfaceImplWrapper::new(Box::new(ReturnOpBuiltinOpInterfaceImpl))
@@ -778,11 +795,11 @@ impl ReturnOp<'_> {
 
 // BuiltinOp interface implementation.
 impl<'a> ReturnOp<'a> {
-    pub fn verify_op(&self, diagnostics: &mut DiagnosticsEmitter) {
+    pub fn verify_op(&self, diagnostics: &mut DiagnosticsEmitter) -> ErrorOrSuccess {
         // Get the function signature of the parent.
         let fun_op = match self.parent_op() {
             Some(x) => x,
-            None => return,
+            None => return Ok(()),
         };
         let fun_type = match fun_op.cast::<FunctionOp>() {
             Some(fun_op) => fun_op.get_function_type(),
@@ -792,7 +809,7 @@ impl<'a> ReturnOp<'a> {
                     &self.generic(),
                     format!("ReturnOp parent must be a FunctionOp"),
                 );
-                return;
+                return Err(());
             }
         };
 
@@ -807,7 +824,7 @@ impl<'a> ReturnOp<'a> {
                     self.get_num_inputs()
                 ),
             );
-            return;
+            return Err(());
         }
         for (idx, (fun_ty, ret_ty)) in fun_type
             .results()
@@ -818,8 +835,11 @@ impl<'a> ReturnOp<'a> {
             if fun_ty != ret_ty {
                 emit_error(diagnostics, &self.generic(), format!("Function signature result type #{} is {}, but the return value #{} is of type {}", 
                     idx, fun_ty.to_string_repr(), idx, ret_ty.to_string_repr()));
+                return Err(());
             }
         }
+
+        Ok(())
     }
 
     pub fn custom_print(&self, printer: &mut IRPrinter) -> Result<(), std::io::Error> {
@@ -888,7 +908,7 @@ impl<'a> ReturnOp<'a> {
         interpreter.set_function_outputs(outputs);
 
         // Return from the function.
-        interpreter.pop_callstack();
+        interpreter.pop_call_frame();
     }
 }
 
@@ -906,6 +926,7 @@ impl<'a> ReturnOp<'a> {
 // @tags ["TAG_PURE_OP", "TAG_LOW_LEVEL_OP"]
 // @interfaces [ConstantOp]
 // @custom_print_parse
+// @disable_default_builder
 // @constant_builder
 
 // @XGENBEGIN
@@ -950,6 +971,11 @@ impl<'a> GenericConstantOp<'a> {
         self.get_attr(GENERIC_CONSTANT_ATTR_VALUE)
             .expect("Missing `value` attribute")
     }
+
+    pub fn get_value_attr(&self) -> &'a Attribute {
+        self.get_attr(GENERIC_CONSTANT_ATTR_VALUE)
+            .expect("Missing `value` attribute")
+    }
 }
 
 // Wrapper struct for the BuiltinOp interface implementation.
@@ -962,7 +988,7 @@ impl BuiltinOpInterfaceImpl for GenericConstantOpBuiltinOpInterfaceImpl {
         ctx: &'a IRContext,
         data: &'a OperationData,
         diagnostics: &mut DiagnosticsEmitter,
-    ) {
+    ) -> ErrorOrSuccess {
         GenericOperation::make_from_data(ctx, data)
             .cast::<GenericConstantOp>()
             .unwrap()
@@ -1026,10 +1052,10 @@ impl OpInterfaceBuilder for GenericConstantOpConstantOpInterfaceImpl {
 }
 
 impl<'a> GenericConstantOp<'a> {
-    pub fn verify(&self, diagnostics: &mut DiagnosticsEmitter) {
-        ir_checks::verif_inputs_count(diagnostics, self.generic(), 0);
-        ir_checks::verif_has_attr(diagnostics, self.generic(), GENERIC_CONSTANT_ATTR_VALUE);
-        ir_checks::verif_outputs_count(diagnostics, self.generic(), 1);
+    pub fn verify(&self, diagnostics: &mut DiagnosticsEmitter) -> ErrorOrSuccess {
+        ir_checks::verif_inputs_count(diagnostics, self.generic(), 0)?;
+        ir_checks::verif_has_attr(diagnostics, self.generic(), GENERIC_CONSTANT_ATTR_VALUE)?;
+        ir_checks::verif_outputs_count(diagnostics, self.generic(), 1)?;
         ir_checks::verif_io_type(
             diagnostics,
             self.generic(),
@@ -1038,8 +1064,9 @@ impl<'a> GenericConstantOp<'a> {
             "result",
             |ty| ir_checks::pred_match_type_of_attr(&self.generic(), ty, "value"),
             "same type than value",
-        );
-        ir_checks::verif_blocks_count(diagnostics, self.generic(), 0);
+        )?;
+        ir_checks::verif_blocks_count(diagnostics, self.generic(), 0)?;
+        Ok(())
     }
     pub fn clone() -> BuiltinOpInterfaceImplWrapper {
         BuiltinOpInterfaceImplWrapper::new(Box::new(GenericConstantOpBuiltinOpInterfaceImpl))

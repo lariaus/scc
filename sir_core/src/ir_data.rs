@@ -357,3 +357,15 @@ impl OperationData {
 // Unique identifier for an operation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct OperationID(pub(crate) usize);
+
+/// Convert an OperationID to an opaque representation.
+/// Shouldn't be used unless you know what you're doing.
+pub fn operation_id_to_opaque(uid: OperationID) -> usize {
+    uid.0
+}
+
+/// Convert an OperationID to an opaque representation.
+/// Shouldn't be used unless you know what you're doing.
+pub fn operation_id_from_opaque(uid: usize) -> OperationID {
+    OperationID(uid)
+}

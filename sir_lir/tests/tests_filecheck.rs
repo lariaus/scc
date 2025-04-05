@@ -76,8 +76,23 @@ fn run_xtest(path: &str) {
 }
 
 #[test]
+fn test_ops_alloca_verifier() {
+    run_xtest("ops/alloca_verifier.sir");
+}
+
+#[test]
 fn test_ops_iadd_verifier() {
     run_xtest("ops/iadd_verifier.sir");
+}
+
+#[test]
+fn test_ops_load_verifier() {
+    run_xtest("ops/load_verifier.sir");
+}
+
+#[test]
+fn test_ops_store_verifier() {
+    run_xtest("ops/store_verifier.sir");
 }
 
 #[test]
@@ -88,4 +103,9 @@ fn test_transforms_fold_elementwise() {
 #[test]
 fn test_runner_elementwise() {
     run_xtest("runner/elementwise.sir");
+}
+
+#[test]
+fn test_runner_mem_ops() {
+    run_xtest("runner/mem_ops.sir");
 }

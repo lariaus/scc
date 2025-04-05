@@ -10,6 +10,7 @@ use crate::{
     operation::{GenericOperation, OperationImpl},
     operation_type::{OperationTypeRef, OperationTypeUID},
     types::Type,
+    value::Value,
 };
 
 // Insertion point to indicate where to insert the next created op.
@@ -243,6 +244,11 @@ impl<'a> IRBuilder<'a> {
     // Get the block from the uid.
     pub fn get_block(&self, uid: BlockID) -> Block {
         self.ctx.get_block(uid)
+    }
+
+    // Get the value from the uid.
+    pub fn get_value(&self, uid: ValueID) -> Value {
+        self.ctx.get_value(uid)
     }
 }
 

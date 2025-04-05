@@ -1,0 +1,26 @@
+// XTEST: sir-opt
+// XTEST-OUTPUT-CHECK
+
+module {
+
+// CHECK-NOT: Error
+function @load_ok(%arg0: ptr<i32>) -> () {
+    %0 = "mem.load"(%arg0) : (ptr<i32>) -> (i32)
+    return
+}
+
+// CHECK: Error: Input #0 (ptr) must be of type `Pointer`, but got i32
+// CHECK-NEXT: %0 = "mem.load"(%arg0) : (i32) -> (i32)
+function @load_not_ptr(%arg0: i32) -> () {
+    %0 = "mem.load"(%arg0) : (i32) -> (i32)
+    return
+}
+
+// CHECK: Error: Pointer element type i32 differs from value type si32 
+// CHECK-NEXT: %0 = "mem.load"(%arg0) : (ptr<i32>) -> (si32)
+function @load_invalid_ptr(%arg0: ptr<i32>) -> () {
+    %0 = "mem.load"(%arg0) : (ptr<i32>) -> (si32)
+    return
+}
+
+}

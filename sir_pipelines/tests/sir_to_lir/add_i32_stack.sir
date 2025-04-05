@@ -1,0 +1,26 @@
+// XTEST: sir-opt --sir-to-lir
+// XTEST-OUTPUT-CHECK
+
+module {
+
+// CHECK: function @my_add(%arg0: i32, %arg1: i32) -> (i32)
+// CHECK-NEXT: %0 = lir.alloca ptr<i32>, align 4
+// CHECK-NEXT: lir.store %arg0, %0 : ptr<i32>
+// CHECK-NEXT: %1 = lir.alloca ptr<i32>, align 4
+// CHECK-NEXT: lir.store %arg1, %1 : ptr<i32>
+// CHECK-NEXT: %2 = lir.load %0 : ptr<i32>
+// CHECK-NEXT: %3 = lir.load %1 : ptr<i32>
+// CHECK-NEXT: %4 = lir.iadd %2, %3 : i32
+// CHECK-NEXT: return %4 : i32
+function @my_add(%arg0: i32, %arg1: i32) -> (i32) {
+    %0 = "mem.alloca"() {"align" = 4: i64} : () -> (ptr<i32>)
+    "mem.store"(%arg0, %0) : (i32, ptr<i32>) -> ()
+    %1 = "mem.alloca"() {"align" = 4: i64} : () -> (ptr<i32>)
+    "mem.store"(%arg1, %1) : (i32, ptr<i32>) -> ()
+    %2 = "mem.load"(%0) : (ptr<i32>) -> (i32)
+    %3 = "mem.load"(%1) : (ptr<i32>) -> (i32)
+    %4 = math.iadd %2, %3 : i32
+    return %4 : i32
+}
+
+}

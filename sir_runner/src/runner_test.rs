@@ -18,7 +18,33 @@ use crate::runner::{SIRRunner, SIRRunnerMode, SIRRunnerOpts};
 
 /// Interface used to be able to configure a SIRRunnerTestRunner object.
 pub trait SIRRunnerTestInterface {
-    fn setup_context(&self, ctx: &mut IRContext);
+    // Only needs to be implemented if build_ir is not implemented.
+    fn setup_context(&self, _ctx: &mut IRContext) {
+        panic!("setup_context not implemented")
+    }
+
+    // Returns the root operation for the interpret, along with the context.
+    // You should only ovverride this if for some reason you want to build you own IR from scratch.
+    // Usually overiding other methods is simpler.
+    fn build_ir(&self, cfg: &TestConfig, os: &mut OutputTestWriter) -> (IRContext, OperationID) {
+        // Prepare the context.
+        let mut ctx = IRContext::new();
+        self.setup_context(&mut ctx);
+
+        // Parse the input file.
+        let mut ss = SourceStreamsSet::new();
+        let src_file = ss.add_source_file(cfg.path());
+        let mut parser_opts = IRParserOpts::new();
+        parser_opts.accept_unregistred_ops = false;
+        let parser = IRParser::new(parser_opts, ss.open_stream(src_file));
+        let root = parser.parse_all_with_context::<OperationID>(&mut ctx);
+        let root = match root.resolve_with_stream(CompilerInputs::Sources(&ss), os) {
+            Some(root) => root,
+            None => panic!("parse failure"),
+        };
+
+        (ctx, root)
+    }
 }
 
 /// Class used for unit tests to execute programs with SIRRunner.
@@ -105,26 +131,11 @@ impl<T: SIRRunnerTestInterface> TestRunner for SIRRunnerTestRunner<T> {
     }
 
     fn run_test(&self, cfg: &TestConfig, os: &mut OutputTestWriter) -> i64 {
-        // Get the runner opts.
+        // Build the IR.
+        let (ctx, root) = self.int.build_ir(cfg, os);
+
+        // Get the runner options.
         let runner_opts = self.get_runner_opts(cfg);
-
-        // Prepare the context.
-        let mut ctx = IRContext::new();
-        self.int.setup_context(&mut ctx);
-
-        // Check the
-
-        // Parse the input file.
-        let mut ss = SourceStreamsSet::new();
-        let src_file = ss.add_source_file(cfg.path());
-        let mut parser_opts = IRParserOpts::new();
-        parser_opts.accept_unregistred_ops = false;
-        let parser = IRParser::new(parser_opts, ss.open_stream(src_file));
-        let root = parser.parse_all_with_context::<OperationID>(&mut ctx);
-        let root = match root.resolve_with_stream(CompilerInputs::Sources(&ss), os) {
-            Some(root) => root,
-            None => return 1,
-        };
 
         // Build the runner.
         let root = ctx.get_generic_operation(root);
