@@ -5,14 +5,18 @@ use std::{
 
 use diagnostics::diagnostics::{DiagnosticsEmitter, ErrorOrSuccess};
 
-use crate::{
+use sir_core::{
     ir_context::IRContext,
     ir_data::{BlockID, OperationID},
     ir_printer::IRPrintableObject,
-    ir_rewriter::{IRRewriter, IRRewriterOptions},
     op_tags::TAG_PURE_OP,
     operation::{GenericOperation, OperationImpl},
-    pass_manager::{Pass, PassRegistration},
+};
+
+use crate::{
+    ir_rewriter::{IRRewriter, IRRewriterOptions},
+    pass::{Pass, PassRegistration},
+    sir_backend::SIRBackend,
 };
 
 /// Implementation of a Common Subexpression Eliminitation Pass.
@@ -278,6 +282,7 @@ impl Pass for CSEPass {
 
     fn run_on_operation(
         &self,
+        _backend: &SIRBackend,
         diagnostics: &mut DiagnosticsEmitter,
         ctx: &mut IRContext,
         op: OperationID,

@@ -1,14 +1,14 @@
 use crate::interfaces::InterpretableComputeOp;
 use diagnostics::diagnostics::{DiagnosticsEmitter, ErrorOrSuccess};
-use sir_core::pass_manager::PassRegistration;
 use sir_core::{
-    canonicalize_pass::CanonicalizePass,
-    compiler_setup::CompilerSetup,
+    ir_context::IRContext,
     ir_data::{OperationID, ValueID},
-    ir_rewriter::IRRewriter,
-    ir_transforms::OpTransform,
     op_interfaces::match_constant,
     operation::{GenericOperation, OperationImpl},
+};
+use sir_transform::pass::PassRegistration;
+use sir_transform::{
+    canonicalize_pass::CanonicalizePass, ir_rewriter::IRRewriter, ir_transforms::OpTransform,
 };
 
 struct CanonicalizeInterpretableOp;
@@ -66,9 +66,18 @@ impl OpTransform for CanonicalizeInterpretableOp {
     }
 }
 
-pub fn register_interpreter_transforms(cs: &mut CompilerSetup) {
-    // Canonicalization patterns.
-    cs.register_extra_pass_transforms(CanonicalizePass::get_pass_name(), |transforms| {
-        transforms.add_transform(CanonicalizeInterpretableOp);
-    });
+pub fn register_interpreter_transforms(ctx: &mut IRContext) {
+    sir_transform::context_registry::ContextRegistry::exec_register_fn(
+        ctx,
+        "__sir/transforms/register_interpreter_transforms",
+        |mut registry| {
+            // Canonicalization patterns.
+            registry.register_extra_pass_transforms(
+                CanonicalizePass::get_pass_name(),
+                |transforms| {
+                    transforms.add_transform(CanonicalizeInterpretableOp);
+                },
+            );
+        },
+    );
 }

@@ -223,6 +223,18 @@ pub trait Parser: CompilerDiagnosticsEmitter {
         }
     }
 
+    // Look at the next token. Returns true and consume it if it's the identifier `val`.
+    // Otherwise returns false.
+    fn try_consume_identifier_val(&mut self, val: &str) -> bool {
+        let tok = self.peek_token();
+        if tok.get_identifier() == Some(val) {
+            self.get_token();
+            true
+        } else {
+            false
+        }
+    }
+
     // Consume the next token only if it's an identifier.
     // If it's not, emit an error.
     // Returns the consumed token.

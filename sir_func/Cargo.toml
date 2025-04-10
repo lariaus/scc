@@ -10,6 +10,8 @@ parse = { path = "../parse" }
 sir_core = { path = "../sir_core" }
 sir_interpreter = { path = "../sir_interpreter" }
 sir_low_level = { path = "../sir_low_level" }
+sir_transform = { path = "../sir_transform" }
 
 [dev-dependencies]
+sir_opt = { path = "../sir_opt" }
 xtest = { path = "../xtest" }

@@ -1,0 +1,15 @@
+pub mod canonicalize_pass;
+pub mod context_registry;
+pub mod cse_pass;
+pub mod dag_transformer;
+pub mod ir_rewriter;
+pub mod ir_transforms;
+pub mod pass;
+pub mod pass_manager;
+pub mod register;
+pub mod sir_backend;
+pub mod sir_backend_descriptor;
+pub mod sir_registers_descriptor;
+pub mod transforms_registry;
+pub mod type_converter;
+pub mod unknown_backend_desc;

@@ -635,6 +635,11 @@ pub mod ir_checks {
 
 // Extra verifier definitions for XGenDef.
 
+// Decorator that can make any input / output / attr optional.
+// @XGENDEF Optional<Value>
+// @__decorator_kind "optional"
+// @value Value
+
 // Define a mod that runs some extra verify code for the op.
 // @XGENDEF OpVerifierMod<Code>
 // @kind "op-verifier-mod"

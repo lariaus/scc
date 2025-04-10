@@ -1,8 +1,8 @@
 use sir_core::{
     attributes::{Attribute, FloatAttr, IntegerAttr},
-    type_converter::TypeConverter,
     types::{FloatType, FunctionType, IntegerType, PointerType, Type},
 };
+use sir_transform::type_converter::TypeConverter;
 
 pub fn is_valid_scalar_int_type(ty: &IntegerType) -> bool {
     // Only support signless types.

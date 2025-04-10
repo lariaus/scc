@@ -1,0 +1,45 @@
+{
+    "all_regs": {
+
+        "mk_w": {
+            "desc": "Virtual word registers (i32)",
+            "kind": "general",
+            "bitwidth": 32,
+            "is_virtual": true
+        },
+
+
+        "sp": {
+            "desc": "Stack Pointer",
+            "kind": "stack_pointer",
+            "bitwidth": 64
+        },
+
+        
+        "w0": {
+            "desc": "Word register for r0",
+            "kind": "general",
+            "bitwidth": 32
+        },
+        "w1": {
+            "desc": "Word register for r1",
+            "kind": "general",
+            "bitwidth": 32
+        },
+        "w2": {
+            "desc": "Word register for r2",
+            "kind": "general",
+            "bitwidth": 32
+        },
+        "w3": {
+            "desc": "Word register for r3",
+            "kind": "general",
+            "bitwidth": 32
+        },
+        "w4": {
+            "desc": "Word register for r4",
+            "kind": "general",
+            "bitwidth": 32
+        }
+    }
+}

@@ -1,0 +1,15 @@
+// XTEST: sir-opt --instruction-selection
+// XTEST-OUTPUT-CHECK
+
+module {
+
+// CHECK: arm.proc @my_add ins [mk_w:0, mk_w:1] outs [mk_w:2] frame_size = 0
+// CHECK-NEXT: arm.add mk_w:2, mk_w:0, mk_w:1
+// CHECK-NEXT: arm.ret 
+
+function @my_add(%arg0: i32, %arg1: i32) -> (i32) {
+    %0 = lir.iadd %arg0, %arg1 : i32
+    return %0 : i32
+}
+
+}

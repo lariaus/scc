@@ -1,4 +1,4 @@
-use sir_core::sir_opt_runner::SIROptRunner;
+use sir_opt::sir_opt_runner::SIROptRunner;
 use sir_pipelines::{
     register::{register_all_sir_ops, register_all_sir_passes},
     sir_to_lir::create_sir_to_lir_pipeline,
@@ -29,7 +29,7 @@ impl TestRunner for SIROptTestRunner {
         runner.set_manually_pass_input_file(true);
         runner.set_input_path(cfg.path().to_owned());
 
-        runner.register_setup_callback(register_all_sir_passes);
+        runner.register_setup_ctx_callback(register_all_sir_passes);
         runner.register_setup_ctx_callback(register_all_sir_ops);
 
         if mode == "--sir-to-lir" {

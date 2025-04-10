@@ -4,12 +4,14 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+diagnostics = { path = "../diagnostics" }
+parse = { path = "../parse" }
 sir_core = { path = "../sir_core" }
 sir_lir = { path = "../sir_lir" }
 sir_low_level = { path = "../sir_low_level" }
-diagnostics = { path = "../diagnostics" }
-parse = { path = "../parse" }
+sir_transform = { path = "../sir_transform" }
 
 [dev-dependencies]
+sir_opt = { path = "../sir_opt" }
 sir_func = { path = "../sir_func" }
 xtest = { path = "../xtest" }

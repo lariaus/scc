@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+sir_backend = { path = "../sir_backend" }
+sir_backend_arm_v86a = { path = "../sir_backend_arm_v86a" }
 sir_core = { path = "../sir_core" }
 sir_func = { path = "../sir_func" }
 sir_interpreter = { path = "../sir_interpreter" }
@@ -11,6 +13,8 @@ sir_lir = { path = "../sir_lir" }
 sir_low_level = { path = "../sir_low_level" }
 sir_math = { path = "../sir_math" }
 sir_mem = { path = "../sir_mem" }
+sir_transform = { path = "../sir_transform" }
 
 [dev-dependencies]
+sir_opt = { path = "../sir_opt" }
 xtest = { path = "../xtest" }

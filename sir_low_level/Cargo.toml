@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 diagnostics = { path = "../diagnostics" }
 sir_core = { path = "../sir_core" }
+sir_transform = { path = "../sir_transform" }

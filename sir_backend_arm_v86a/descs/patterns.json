@@ -1,0 +1,13 @@
+[
+    "lir.alloca<#align !out_type>() => @stack_alloc<#align>()",
+    "lir.str<>(%val, %ptr) => arm.str<%val, %ptr>",
+    "lir.str<>(%val, lir.alloca<#align !out_type>()) => arm.str<value=%val, ptr=sp, offset=@stack_offset(%val)>",
+
+    {
+        "pat": "lir.str<>($val, @op(lir.alloca<align=#align>, $out), !out_type>())",
+        "asm": [
+            "arm.str<value=$val, ptr=@reg(sp), offset=@stack_offset($out, $align)>"
+        ],
+        "benefit": 0
+    }
+]

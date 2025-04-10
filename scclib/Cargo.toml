@@ -8,4 +8,5 @@ cast = { path = "../cast" }
 diagnostics = { path = "../diagnostics" }
 iostreams = { path = "../iostreams" }
 sir_core = { path = "../sir_core" }
+sir_transform = { path = "../sir_transform" }
 sir_pipelines = { path = "../sir_pipelines" }

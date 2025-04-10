@@ -5,6 +5,7 @@ use iostreams::location::Location;
 use crate::{
     attributes::{Attribute, DictAttr, StringAttr},
     block::Block,
+    context_globals::{ContextGlobal, ContextGlobalsSet},
     ir_data::{
         BlockData, BlockID, BlockOperand, OperationData, OperationID, OperationOutput, ValueData,
         ValueID,
@@ -32,6 +33,12 @@ pub struct IRContext {
 
     // Registered builders for ConstantOp.
     _registered_constant_builders: Vec<Box<dyn Fn(Attribute) -> Option<RawOpBuilder>>>,
+
+    // Set of globals attached to the Context.
+    _globals: ContextGlobalsSet,
+
+    // Set of the hashes of all initializers alreary called,
+    _initializers_hashs_set: HashSet<&'static str>,
 }
 
 impl IRContext {
@@ -46,6 +53,8 @@ impl IRContext {
             _data_ops_types: HashMap::new(),
             _opname_to_uid_map: HashMap::new(),
             _registered_constant_builders: Vec::new(),
+            _globals: ContextGlobalsSet::new(),
+            _initializers_hashs_set: HashSet::new(),
         }
     }
 
@@ -525,13 +534,13 @@ impl IRContext {
     }
 
     // Move all ops of `block` at the end of `new_block`.
-    // If `replace_args` if true, all uses of arguments of blocks are replaced with the arguments of new_block.
-    // After the operation `block` will be empty
+    // If `new_args` if set, all uses of arguments of blocks are replaced with new_args
+    // After the operation `block` will be empty.
     pub(crate) fn _splice_block_content_at_end_of_block(
         &mut self,
         block: BlockID,
         new_block: BlockID,
-        replace_args: bool,
+        new_args: Option<&[ValueID]>,
     ) {
         assert!(block != new_block);
 
@@ -548,15 +557,9 @@ impl IRContext {
             .ops_mut()
             .append(&mut ops);
 
-        if replace_args {
+        if let Some(new_args) = new_args {
             let old_args: Vec<ValueID> = self
                 .get_block_data(block)
-                .args()
-                .iter()
-                .map(|x| *x)
-                .collect();
-            let new_args: Vec<ValueID> = self
-                .get_block_data(new_block)
                 .args()
                 .iter()
                 .map(|x| *x)
@@ -567,8 +570,41 @@ impl IRContext {
                 "Both blocks must have the same number of arguments"
             );
             for (old_arg, new_arg) in old_args.into_iter().zip(new_args) {
-                self.replace_all_uses_of_value(old_arg, new_arg);
+                self.replace_all_uses_of_value(old_arg, *new_arg);
             }
+        }
+    }
+
+    /// Get the attached singleton of type T, or None if not found.
+    pub fn get_singleton<T: ContextGlobal>(&self) -> Option<&T> {
+        self._globals.get::<T>()
+    }
+
+    /// Get the attached singleton of type T, or None if not found.
+    pub fn get_singleton_mut<T: ContextGlobal>(&mut self) -> Option<&mut T> {
+        self._globals.get_mut::<T>()
+    }
+
+    /// Returns true if there is an attached singleton of type T.
+    pub fn contains_singleton<T: ContextGlobal>(&self) -> bool {
+        self._globals.contains::<T>()
+    }
+
+    /// Try to insert the singleton `obj`.
+    /// Won't do anything is there is already an attached singleton of type `T`.
+    pub fn insert_singleton<T: ContextGlobal>(&mut self, obj: T) -> &mut T {
+        self._globals.insert(obj)
+    }
+
+    /// Run the function f a single time.
+    /// This is usefull for initializing the IRContext.
+    pub fn run_ininitializer<Fn: FnOnce(&mut IRContext) -> ()>(
+        &mut self,
+        uid: &'static str,
+        f: Fn,
+    ) {
+        if self._initializers_hashs_set.insert(uid) {
+            f(self);
         }
     }
 }

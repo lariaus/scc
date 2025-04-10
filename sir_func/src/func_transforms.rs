@@ -1,15 +1,17 @@
 use diagnostics::diagnostics::{emit_error, ErrorOrSuccess};
+use sir_core::ir_builder::BlockArgumentReplacements;
+use sir_core::ir_context::IRContext;
 use sir_core::ir_printer::IRPrintableObject;
-use sir_core::pass_manager::PassRegistration;
 use sir_core::{
-    compiler_setup::CompilerSetup,
     ir_builder::InsertionPoint,
-    ir_transforms::OpTransform,
     operation::OperationImpl,
     types::{FunctionType, Type},
 };
 use sir_low_level::legalize_pass::LegalizeToLowLevelPass;
 use sir_low_level::low_level_types::convert_attr;
+use sir_transform::ir_rewriter::IRRewriter;
+use sir_transform::ir_transforms::OpTransform;
+use sir_transform::pass::PassRegistration;
 
 use crate::func_ops::{FunctionOp, GenericConstantOp};
 
@@ -23,7 +25,7 @@ impl OpTransform for LegalizeFunctionOp {
     fn transform_op(
         &self,
         _diagnostics: &mut diagnostics::diagnostics::DiagnosticsEmitter,
-        rewriter: &mut sir_core::ir_rewriter::IRRewriter,
+        rewriter: &mut IRRewriter,
         op: sir_core::ir_data::OperationID,
     ) -> diagnostics::diagnostics::ErrorOrSuccess {
         let func_op = rewriter.get_operation(op).cast::<FunctionOp>().unwrap();
@@ -62,7 +64,11 @@ impl OpTransform for LegalizeFunctionOp {
             .as_id();
 
         // Move all ops to the new block.
-        rewriter.splice_block_at(old_block, InsertionPoint::AtEndOf(new_block), true);
+        rewriter.splice_block_at(
+            old_block,
+            InsertionPoint::AtEndOf(new_block),
+            BlockArgumentReplacements::ReplaceWithNewBlockArguments,
+        );
 
         // Replace the op.
         rewriter.replace_op_with_op(op, new_func);
@@ -80,7 +86,7 @@ impl OpTransform for LegalizeConstantOp {
     fn transform_op(
         &self,
         diagnostics: &mut diagnostics::diagnostics::DiagnosticsEmitter,
-        rewriter: &mut sir_core::ir_rewriter::IRRewriter,
+        rewriter: &mut IRRewriter,
         op: sir_core::ir_data::OperationID,
     ) -> ErrorOrSuccess {
         let op = rewriter
@@ -114,9 +120,18 @@ impl OpTransform for LegalizeConstantOp {
 }
 
 /// Register all transforms related to func operations.
-pub fn register_func_transforms(cs: &mut CompilerSetup) {
-    cs.register_extra_pass_transforms(LegalizeToLowLevelPass::get_pass_name(), |transforms| {
-        transforms.add_transform(LegalizeFunctionOp);
-        transforms.add_transform(LegalizeConstantOp);
-    });
+pub fn register_func_transforms(ctx: &mut IRContext) {
+    sir_transform::context_registry::ContextRegistry::exec_register_fn(
+        ctx,
+        "__sir/transforms/register_func_transforms",
+        |mut registry| {
+            registry.register_extra_pass_transforms(
+                LegalizeToLowLevelPass::get_pass_name(),
+                |transforms| {
+                    transforms.add_transform(LegalizeFunctionOp);
+                    transforms.add_transform(LegalizeConstantOp);
+                },
+            );
+        },
+    );
 }

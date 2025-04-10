@@ -21,6 +21,7 @@ use sir_core::{
     types::{FunctionType, IntegerType, Type},
     value::Value,
 };
+use sir_transform::context_registry::ContextRegistry;
 
 /////////////////////////////////////////////////////////////////////////
 // TestModOp implementation
@@ -131,7 +132,7 @@ impl<'a> TestModOp<'a> {
     }
 }
 
-fn register_test_mod_op(ctx: &mut IRContext) {
+fn register_test_mod_op(ctx: &mut ContextRegistry) {
     let mut infos = OperationTypeBuilder::new();
     infos.set_opname(TEST_MOD_OPNAME);
     infos.set_impl::<TestModOp>();
@@ -236,6 +237,11 @@ impl<'a> TestFunOp<'a> {
             .val()
     }
 
+    pub fn get_symbol_name_attr(&self) -> &'a Attribute {
+        self.get_attr(TEST_FUN_ATTR_SYMBOL_NAME)
+            .expect("Missing `symbol_name` attribute")
+    }
+
     pub fn get_function_type(&self) -> &'a FunctionType {
         self.get_attr(TEST_FUN_ATTR_FUNCTION_TYPE)
             .expect("Missing `function_type` attribute")
@@ -244,6 +250,11 @@ impl<'a> TestFunOp<'a> {
             .val()
             .cast::<FunctionType>()
             .expect("`function_type` type attribute must be a FunctionType")
+    }
+
+    pub fn get_function_type_attr(&self) -> &'a Attribute {
+        self.get_attr(TEST_FUN_ATTR_FUNCTION_TYPE)
+            .expect("Missing `function_type` attribute")
     }
 
     pub fn get_body(&self) -> Block<'a> {
@@ -324,7 +335,7 @@ impl<'a> TestFunOp<'a> {
     }
 }
 
-fn register_test_fun_op(ctx: &mut IRContext) {
+fn register_test_fun_op(ctx: &mut ContextRegistry) {
     let mut infos = OperationTypeBuilder::new();
     infos.set_opname(TEST_FUN_OPNAME);
     infos.set_impl::<TestFunOp>();
@@ -613,7 +624,7 @@ impl<'a> TestAddOp<'a> {
     }
 }
 
-fn register_test_add_op(ctx: &mut IRContext) {
+fn register_test_add_op(ctx: &mut ContextRegistry) {
     let mut infos = OperationTypeBuilder::new();
     infos.set_opname(TEST_ADD_OPNAME);
     infos.set_impl::<TestAddOp>();
@@ -784,7 +795,7 @@ impl<'a> TestReturnOp<'a> {
     }
 }
 
-fn register_test_return_op(ctx: &mut IRContext) {
+fn register_test_return_op(ctx: &mut ContextRegistry) {
     let mut infos = OperationTypeBuilder::new();
     infos.set_opname(TEST_RETURN_OPNAME);
     infos.set_impl::<TestReturnOp>();
@@ -917,10 +928,12 @@ impl<'a> TestReturnOp<'a> {
 
 // @XGENBEGIN RegisterOps register_test_ops
 pub fn register_test_ops(ctx: &mut IRContext) {
-    register_test_mod_op(ctx);
-    register_test_fun_op(ctx);
-    register_test_add_op(ctx);
-    register_test_return_op(ctx);
+    ContextRegistry::exec_register_fn(ctx, "__sir/ops/register_test_ops", |mut registry| {
+        register_test_mod_op(&mut registry);
+        register_test_fun_op(&mut registry);
+        register_test_add_op(&mut registry);
+        register_test_return_op(&mut registry);
+    });
 }
 
 // @XGENEND

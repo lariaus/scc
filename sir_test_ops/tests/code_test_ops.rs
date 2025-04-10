@@ -13,9 +13,7 @@ use sir_core::{
     operation::{GenericOperation, OperationImpl},
     types::{FloatType, FunctionType, Type},
 };
-use test_ops::{register_test_ops, TestAddOp, TestFunOp, TestReturnOp};
-
-mod test_ops;
+use sir_test_ops::test_ops::{register_test_ops, TestAddOp, TestFunOp, TestReturnOp};
 
 #[test]
 fn test_fun_op() {

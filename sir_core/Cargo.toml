@@ -12,4 +12,5 @@ parse = { path = "../parse" }
 utils = { path = "../utils" }
 
 [dev-dependencies]
+sir_opt = { path = "../sir_opt" }
 xtest = { path = "../xtest" }

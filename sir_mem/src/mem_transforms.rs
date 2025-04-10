@@ -1,12 +1,10 @@
 use diagnostics::diagnostics::{emit_error, ErrorOrSuccess};
-use sir_core::ir_printer::IRPrintableObject;
-use sir_core::pass_manager::PassRegistration;
+use sir_core::operation::OperationImpl;
 use sir_core::types::PointerType;
-use sir_core::{
-    compiler_setup::CompilerSetup, ir_transforms::OpTransform, operation::OperationImpl,
-};
+use sir_core::{ir_context::IRContext, ir_printer::IRPrintableObject};
 use sir_lir::lir_ops::{LIRAllocaOp, LIRLoadOp, LIRStoreOp};
 use sir_low_level::legalize_pass::LegalizeToLowLevelPass;
+use sir_transform::{ir_rewriter::IRRewriter, ir_transforms::OpTransform, pass::PassRegistration};
 
 use crate::mem_ops::{MemAllocaOp, MemLoadOp, MemStoreOp};
 
@@ -20,7 +18,7 @@ impl OpTransform for LegalizeMemLoadOp {
     fn transform_op(
         &self,
         _diagnostics: &mut diagnostics::diagnostics::DiagnosticsEmitter,
-        rewriter: &mut sir_core::ir_rewriter::IRRewriter,
+        rewriter: &mut IRRewriter,
         op: sir_core::ir_data::OperationID,
     ) -> ErrorOrSuccess {
         let op = rewriter.get_operation(op).cast::<MemLoadOp>().unwrap();
@@ -55,7 +53,7 @@ impl OpTransform for LegalizeMemStoreOp {
     fn transform_op(
         &self,
         _diagnostics: &mut diagnostics::diagnostics::DiagnosticsEmitter,
-        rewriter: &mut sir_core::ir_rewriter::IRRewriter,
+        rewriter: &mut IRRewriter,
         op: sir_core::ir_data::OperationID,
     ) -> ErrorOrSuccess {
         let op = rewriter.get_operation(op).cast::<MemStoreOp>().unwrap();
@@ -83,7 +81,7 @@ impl OpTransform for LegalizeMemAllocaOp {
     fn transform_op(
         &self,
         diagnostics: &mut diagnostics::diagnostics::DiagnosticsEmitter,
-        rewriter: &mut sir_core::ir_rewriter::IRRewriter,
+        rewriter: &mut IRRewriter,
         op: sir_core::ir_data::OperationID,
     ) -> ErrorOrSuccess {
         let op = rewriter.get_operation(op).cast::<MemAllocaOp>().unwrap();
@@ -118,10 +116,19 @@ impl OpTransform for LegalizeMemAllocaOp {
 }
 
 /// Register all transforms related to mem operations.
-pub fn register_mem_transforms(cs: &mut CompilerSetup) {
-    cs.register_extra_pass_transforms(LegalizeToLowLevelPass::get_pass_name(), |transforms| {
-        transforms.add_transform(LegalizeMemLoadOp);
-        transforms.add_transform(LegalizeMemStoreOp);
-        transforms.add_transform(LegalizeMemAllocaOp);
-    });
+pub fn register_mem_transforms(ctx: &mut IRContext) {
+    sir_transform::context_registry::ContextRegistry::exec_register_fn(
+        ctx,
+        "__sir/transforms/register_mem_transforms",
+        |mut registry| {
+            registry.register_extra_pass_transforms(
+                LegalizeToLowLevelPass::get_pass_name(),
+                |transforms| {
+                    transforms.add_transform(LegalizeMemLoadOp);
+                    transforms.add_transform(LegalizeMemStoreOp);
+                    transforms.add_transform(LegalizeMemAllocaOp);
+                },
+            );
+        },
+    );
 }

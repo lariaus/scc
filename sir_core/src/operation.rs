@@ -186,6 +186,11 @@ pub trait OperationImpl<'a> {
         self.get_attrs_dict().get_with_str_key(name)
     }
 
+    // Returns true if op has an attr `name`.
+    fn has_attr(&self, name: &str) -> bool {
+        self.get_attrs_dict().get_with_str_key(name).is_some()
+    }
+
     // Find the op before `self` in the parent block.
     // Returns None if op is the last op of the block.
     fn get_op_before(&self) -> Option<GenericOperation<'a>> {

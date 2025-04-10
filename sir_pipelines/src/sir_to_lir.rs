@@ -1,5 +1,7 @@
-use sir_core::{canonicalize_pass::CanonicalizePass, cse_pass::CSEPass, pass_manager::PassManager};
 use sir_low_level::legalize_pass::LegalizeToLowLevelPass;
+use sir_transform::{
+    canonicalize_pass::CanonicalizePass, cse_pass::CSEPass, pass_manager::PassManager,
+};
 
 /// Create the full pipeline that takes any SIR module, optimize it and lower it to LIR.
 pub fn create_sir_to_lir_pipeline(pm: &mut PassManager) {

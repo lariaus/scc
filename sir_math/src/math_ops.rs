@@ -20,6 +20,7 @@ use sir_core::{
     types::{IntegerType, Type},
     value::Value,
 };
+use sir_transform::context_registry::ContextRegistry;
 
 /////////////////////////////////////////////////////////////////////////
 // MathConstant implementation
@@ -184,7 +185,7 @@ impl<'a> MathConstantOp<'a> {
     }
 }
 
-fn register_math_constant_op(ctx: &mut IRContext) {
+fn register_math_constant_op(ctx: &mut ContextRegistry) {
     let mut infos = OperationTypeBuilder::new();
     infos.set_opname(MATH_CONSTANT_OPNAME);
     infos.set_impl::<MathConstantOp>();
@@ -363,7 +364,7 @@ impl<'a> MathIAddOp<'a> {
     }
 }
 
-fn register_math_i_add_op(ctx: &mut IRContext) {
+fn register_math_i_add_op(ctx: &mut ContextRegistry) {
     let mut infos = OperationTypeBuilder::new();
     infos.set_opname(MATH_I_ADD_OPNAME);
     infos.set_impl::<MathIAddOp>();
@@ -432,8 +433,10 @@ impl<'a> MathIAddOp<'a> {
 
 // @XGENBEGIN RegisterOps register_math_ops
 pub fn register_math_ops(ctx: &mut IRContext) {
-    register_math_constant_op(ctx);
-    register_math_i_add_op(ctx);
+    ContextRegistry::exec_register_fn(ctx, "__sir/ops/register_math_ops", |mut registry| {
+        register_math_constant_op(&mut registry);
+        register_math_i_add_op(&mut registry);
+    });
 }
 
 // @XGENEND

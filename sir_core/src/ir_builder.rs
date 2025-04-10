@@ -175,6 +175,17 @@ impl<'a> IRBuilder<'a> {
         self.create_op_at(self.ip, loc, b)
     }
 
+    // Completely erase the op from the IR and the context.
+    // op must not have any uses.
+    pub fn erase_op(&mut self, op: OperationID) {
+        self.ctx.erase_op(op);
+    }
+
+    // Replace of uses of `old_val` in the IR by `new_val`
+    pub fn replace_all_uses_of_value(&mut self, old_val: ValueID, new_val: ValueID) {
+        self.ctx.replace_all_uses_of_value(old_val, new_val);
+    }
+
     // Materialize a constant from `val` and insert it at `pos`.
     pub fn materialize_constant_at(
         &mut self,
@@ -223,15 +234,24 @@ impl<'a> IRBuilder<'a> {
     }
 
     // Splice the content of block at `pos`, leaving `block` empty
-    pub fn splice_block_at(&mut self, block: BlockID, pos: InsertionPoint, replace_args: bool) {
+    pub fn splice_block_at(
+        &mut self,
+        block: BlockID,
+        pos: InsertionPoint,
+        new_args: BlockArgumentReplacements,
+    ) {
         match pos {
             InsertionPoint::Detached => panic!("Invalid position"),
             InsertionPoint::BeforeOp(_pos) => todo!(),
             InsertionPoint::AfterOp(_pos) => todo!(),
             InsertionPoint::AtBeginOf(_pos) => todo!(),
             InsertionPoint::AtEndOf(pos) => {
-                self.ctx
-                    ._splice_block_content_at_end_of_block(block, pos, replace_args)
+                let new_args: Option<Vec<ValueID>> = new_args.get_replacements(self.get_block(pos));
+                self.ctx._splice_block_content_at_end_of_block(
+                    block,
+                    pos,
+                    new_args.as_ref().map(|x| &x[..]),
+                )
             }
         }
     }
@@ -249,6 +269,25 @@ impl<'a> IRBuilder<'a> {
     // Get the value from the uid.
     pub fn get_value(&self, uid: ValueID) -> Value {
         self.ctx.get_value(uid)
+    }
+}
+
+pub enum BlockArgumentReplacements {
+    DontReplace,
+    ReplaceWithNewBlockArguments,
+    ReplaceWith(Vec<ValueID>),
+}
+
+impl BlockArgumentReplacements {
+    // Return the new values to replace with, or None if nothing is to be replaced.
+    pub fn get_replacements(self, new_block: Block) -> Option<Vec<ValueID>> {
+        match self {
+            BlockArgumentReplacements::DontReplace => None,
+            BlockArgumentReplacements::ReplaceWithNewBlockArguments => {
+                Some(new_block.get_operands_ids().iter().map(|x| *x).collect())
+            }
+            BlockArgumentReplacements::ReplaceWith(value_ids) => Some(value_ids),
+        }
     }
 }
 

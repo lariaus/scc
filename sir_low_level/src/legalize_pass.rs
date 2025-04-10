@@ -1,10 +1,13 @@
 use diagnostics::diagnostics::{DiagnosticsEmitter, ErrorOrSuccess};
 use sir_core::{
-    ir_transforms::{legalize_ir_with_type_converter, IRLegalizationVerifier, TransformsList},
     op_interfaces::ConstantOp,
     operation::{GenericOperation, OperationImpl},
-    pass_manager::{Pass, PassRegistration},
     types::Type,
+};
+use sir_transform::{
+    ir_transforms::{legalize_ir_with_type_converter, IRLegalizationVerifier, TransformsList},
+    pass::{Pass, PassRegistration},
+    sir_backend::SIRBackend,
 };
 
 use crate::{interfaces::ConditionallyLowLevelOp, low_level_types, tags::TAG_LOW_LEVEL_OP};
@@ -31,6 +34,7 @@ impl Pass for LegalizeToLowLevelPass {
 
     fn run_on_operation(
         &self,
+        _backend: &SIRBackend,
         diagnostics: &mut DiagnosticsEmitter,
         ctx: &mut sir_core::ir_context::IRContext,
         op: sir_core::ir_data::OperationID,

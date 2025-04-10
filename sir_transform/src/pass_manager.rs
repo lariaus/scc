@@ -1,58 +1,31 @@
 use diagnostics::{
-    diagnostics::{CompilerDiagnostics, DiagnosticsEmitter, ErrorOrSuccess},
+    diagnostics::{CompilerDiagnostics, DiagnosticsEmitter},
     result::CompilerResult,
 };
 
-use crate::{
-    canonicalize_pass::CanonicalizePass,
-    compiler_setup::CompilerSetup,
-    cse_pass::CSEPass,
+use sir_core::{
     ir_context::IRContext,
     ir_data::OperationID,
     ir_printer::IRPrintableObject,
-    ir_transforms::TransformsList,
     ir_verifier::{IRVerifier, IRVerifierOptions},
 };
 
-/// A Pass update the IR in a specific way.
-/// It's pretty generic, and can do many things.
-pub trait Pass {
-    /// Called to enable the debug mode for this pass.
-    fn set_debug_mode(&mut self, debug_mode: bool);
-
-    /// Run the pass on `op`.
-    /// It should only modify `op`` and its children.
-    fn run_on_operation(
-        &self,
-        diagnostics: &mut DiagnosticsEmitter,
-        ctx: &mut IRContext,
-        op: OperationID,
-    ) -> ErrorOrSuccess;
-
-    /// Returns the list of transforms applied by this pass.
-    /// This allows adding more transforms to this pass through the PassManager.
-    fn get_exported_transforms_list(&mut self) -> Option<&mut TransformsList> {
-        None
-    }
-}
-
-// All pass must also implement the PassRegistration trait.
-pub trait PassRegistration: Pass {
-    /// Returns the name of the pass.
-    fn get_pass_name() -> &'static str;
-
-    /// Returns a description of what the pass does exactly.
-    fn get_pass_description() -> &'static str;
-}
+use crate::{
+    pass::{Pass, PassRegistration},
+    sir_backend::SIRBackend,
+    transforms_registry::TransformsRegistry,
+};
 
 // Store all infos needed to exec a pass
 struct PassExecutionInfos {
-    pass: Box<dyn Pass>,
-    pass_name: &'static str,
+    pass: Option<Box<dyn Pass>>,
+    pass_name: String,
+    debug: bool,
     print_ir_before: bool,
     print_ir_after: bool,
 }
 
+/// Options to configure the PassManager.
 pub struct PassManagerOptions {
     // Print the IR before executing all passes.
     pub print_ir_before_all_passes: bool,
@@ -67,6 +40,7 @@ pub struct PassManagerOptions {
 }
 
 impl PassManagerOptions {
+    // Create new options with all defaults.
     pub fn new() -> Self {
         Self {
             print_ir_before_all_passes: false,
@@ -79,62 +53,30 @@ impl PassManagerOptions {
 }
 
 // A pass Manager is used to run a sequence of passes in a specific order.
-pub struct PassManager<'a> {
-    sir_setup: &'a CompilerSetup,
+pub struct PassManager {
     passes: Vec<PassExecutionInfos>,
     opts: PassManagerOptions,
+    is_setup: bool,
 }
 
-impl<'a> PassManager<'a> {
+impl PassManager {
     // Create an empty pass manager
-    pub fn new(opts: PassManagerOptions, sir_setup: &'a CompilerSetup) -> Self {
+    pub fn new(opts: PassManagerOptions) -> Self {
         Self {
-            sir_setup,
             passes: vec![],
             opts,
+            is_setup: false,
         }
     }
 
     // Add a pass that you want to execute on the IR.
     pub fn add_pass<T: PassRegistration + 'static>(&mut self, pass: T) {
-        self._add_pass(Box::new(pass), T::get_pass_name());
-    }
-
-    fn _add_pass(&mut self, mut pass: Box<dyn Pass>, pass_name: &'static str) {
-        if let Some(transforms_list) = pass.get_exported_transforms_list() {
-            if let Some(builders) = self
-                .sir_setup
-                .get_registered_extra_transforms()
-                .get(pass_name)
-            {
-                for builder in builders {
-                    builder(transforms_list);
-                }
-            }
-        }
-
-        if self.opts.debug_mode {
-            pass.set_debug_mode(true);
-        }
-
-        self.passes.push(PassExecutionInfos {
-            pass,
-            pass_name,
-            print_ir_before: self.opts.print_ir_before_all_passes
-                || Some(pass_name) == self.opts.print_ir_before_pass.as_ref().map(|x| x.as_str()),
-            print_ir_after: self.opts.print_ir_after_all_passes
-                || Some(pass_name) == self.opts.print_ir_after_pass.as_ref().map(|x| x.as_str()),
-        });
+        self._add_pass(Some(Box::new(pass)), T::get_pass_name());
     }
 
     // Add a pass that you want to execute on the IR.
     pub fn add_pass_by_name(&mut self, name: &str) {
-        let infos = match self.sir_setup.get_registered_passes_builders().get(name) {
-            Some(entry) => entry,
-            None => panic!("No registered pass found for `{}`", name),
-        };
-        let pass = (infos.builder)();
-        self._add_pass(pass, infos.name);
+        self._add_pass(None, name);
     }
 
     /// Enable the debug mode only for the passes named `pass_name`.
@@ -142,31 +84,97 @@ impl<'a> PassManager<'a> {
     pub fn enable_debug_mode_for_pass(&mut self, name: &str) {
         for infos in &mut self.passes {
             if infos.pass_name == name {
-                infos.pass.set_debug_mode(true);
+                infos.debug = true;
             }
         }
     }
 
-    /// Build and return the runner with all the added passes.
-    pub fn make_runner(self) -> PassesRunner {
-        PassesRunner {
-            passes: self.passes,
-        }
+    fn _add_pass(&mut self, pass: Option<Box<dyn Pass>>, pass_name: &str) {
+        self.passes.push(PassExecutionInfos {
+            pass,
+            pass_name: pass_name.to_owned(),
+            debug: self.opts.debug_mode,
+            print_ir_before: self.opts.print_ir_before_all_passes
+                || Some(pass_name) == self.opts.print_ir_before_pass.as_ref().map(|x| x.as_str()),
+            print_ir_after: self.opts.print_ir_after_all_passes
+                || Some(pass_name) == self.opts.print_ir_after_pass.as_ref().map(|x| x.as_str()),
+        });
     }
-}
 
-// Class to run a set of passes
-pub struct PassesRunner {
-    passes: Vec<PassExecutionInfos>,
-}
+    fn _setup_all_passes(&mut self, cs: Option<&TransformsRegistry>) {
+        if self.is_setup {
+            return;
+        }
 
-impl PassesRunner {
-    // Run all registered passes on `root`.
-    // Returns any possible error returned by some of the pass.
-    // Will stop as soon as a pass finds a hard error, or after all passes ran successfully.
-    pub fn run_all(&self, ctx: &mut IRContext, root: OperationID) -> CompilerResult<()> {
+        for pass_exec in &mut self.passes {
+            // Build the pass if needed.
+            if pass_exec.pass.is_none() {
+                let name = &pass_exec.pass_name;
+                // Get the pass from its name.
+                let cs = match cs {
+                    Some(cs) => cs,
+                    None => panic!("No registered pass found for `{}`", name),
+                };
+
+                let infos = match cs.get_registered_passes_builders().get(&name[..]) {
+                    Some(entry) => entry,
+                    None => panic!("No registered pass found for `{}`", name),
+                };
+                pass_exec.pass = Some((infos.builder)());
+            }
+
+            // Setup the pass object.
+            let pass = pass_exec.pass.as_mut().unwrap();
+            if pass_exec.debug {
+                pass.set_debug_mode(true);
+            }
+
+            let cs = match cs {
+                Some(cs) => cs,
+                None => continue,
+            };
+
+            // Add the extra transforms.
+            if let Some(transforms_list) = pass.get_exported_transforms_list() {
+                if let Some(builders) = cs
+                    .get_registered_extra_transforms()
+                    .get(&pass_exec.pass_name)
+                {
+                    for builder in builders {
+                        builder(transforms_list);
+                    }
+                }
+            }
+
+            // Call the options callbacks.
+            if let Some(dyn_opts) = pass.get_dynamic_options() {
+                if let Some(callbacks) =
+                    cs.get_registered_passes_configs().get(&pass_exec.pass_name)
+                {
+                    for callback in callbacks {
+                        callback(dyn_opts);
+                    }
+                }
+            }
+        }
+
+        self.is_setup = true;
+    }
+
+    // Run all passes on the selected IR,
+    pub fn run(
+        &mut self,
+        backend: &SIRBackend,
+        ctx: &mut IRContext,
+        root: OperationID,
+    ) -> CompilerResult<()> {
+        // Setup the registered passes.
+        self._setup_all_passes(TransformsRegistry::get(ctx));
+
+        // Prepare the diagnostics.
         let mut diagnostics = CompilerDiagnostics::new();
 
+        // Run all the passes.
         for infos in &self.passes {
             // Optionnaly print the IR before.
             if infos.print_ir_before {
@@ -174,10 +182,12 @@ impl PassesRunner {
                 eprintln!("{}\n", ctx.get_generic_operation(root).to_string_repr());
             }
 
-            let mut emitter = DiagnosticsEmitter::new(&mut diagnostics, infos.pass_name);
+            let mut emitter = DiagnosticsEmitter::new(&mut diagnostics, &infos.pass_name);
             if infos
                 .pass
-                .run_on_operation(&mut emitter, ctx, root)
+                .as_ref()
+                .unwrap()
+                .run_on_operation(backend, &mut emitter, ctx, root)
                 .is_err()
             {
                 assert!(
@@ -220,10 +230,4 @@ impl PassesRunner {
         // Return success.
         CompilerResult::make(diagnostics, Some(()))
     }
-}
-
-// Register all builtin passes of sir_core.
-pub fn register_core_passes(cs: &mut CompilerSetup) {
-    cs.register_pass(&CanonicalizePass::new);
-    cs.register_pass(&CSEPass::new);
 }

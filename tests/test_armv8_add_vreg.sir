@@ -1,0 +1,17 @@
+
+// cargo run --bin sir-opt -- -i tests/test_armv8_add_vreg.sir --backend-name "Armv8.6-A"
+
+module {
+
+arm.proc @add ins [mk_w:0, mk_w:1] outs [mk_w:4] frame_size = 16 {
+    arm.sub	sp, sp, #16
+    arm.str	mk_w:0, [sp, #12]
+	arm.str	mk_w:1, [sp, #8]
+    arm.ldr	mk_w:2, [sp, #12]
+	arm.ldr	mk_w:3, [sp, #8]
+	arm.add	mk_w:4, mk_w:2, mk_w:3
+	arm.add	sp, sp, #16
+	arm.ret
+}
+
+}

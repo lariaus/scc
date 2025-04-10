@@ -1,0 +1,15 @@
+// cargo run --bin sir-runner -- "tests/test_basic_add_lir.sir" --function "my_add" --inputs 8 13 --mode interpreter
+// cargo run --bin sir-opt -- -i "tests/test_basic_add_lir.sir" --instruction-selection --debug
+
+module {
+    function @my_add(%arg0: i32, %arg1: i32) -> (i32) {
+        %0 = lir.alloca ptr<i32>, align 4
+        lir.store %arg0, %0 : ptr<i32>
+        %1 = lir.alloca ptr<i32>, align 4
+        lir.store %arg1, %1 : ptr<i32>
+        %2 = lir.load %0 : ptr<i32>
+        %3 = lir.load %1 : ptr<i32>
+        %4 = lir.iadd %2, %3 : i32
+        return %4 : i32
+    }
+}

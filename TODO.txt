@@ -86,12 +86,23 @@
 - [DONE] Add unit tests for scc-runner to run a basic add through the interpreter.
 - [DONE] Get rid of the warnings for the test ops.
 - [DONE] Search and add run examples for all binaries in the README file.
-- Add a new instruction selection mechanism and pass.
-- Add pass to do instruction selection to Apple-ARM.
+- [DONE] Define new struct SIRBackendDescriptor part of sir_backend lib to get infos about the backend.
+- [DONE] Define new library sir_backend_arm_v86a wih the descriptor for ARMv8.6-A.
+- [DONE] Define new attr to represent a register.
+- [DONE] Define ops for Arm.
+- [DONE] Add a new instruction selection mechanism and pass.
+- [DONE] Add the instruction selection patterns for Arm.
+- [DONE] Add unit test for a basic add.
+- [DONE] Add unit test for a basic add (stack values).
+- Add new mechanisms to handle register allocation.
+- Add a new interface RegisterAllocableIns that indicates in / out registers.
+- Add new decorators InputRegisterAttr / OutputRegisterAttr to replace the existing RegisterAttr usages.
+- Automatically generate implementation for RegisterAllocableIns based on the register attrs.
+- Add pass to do register allocation for Apple-ARM.
 - Add unit test for a basic add.
 - Add unit test for a basic add (stack values).
-- Add new mechanism to represent registers and handle register allocation.
-- Add pass to do register allocation for Apple-ARM.
+- Add pass to lower calling convention.
+- Add patterns and implementation for Apple-ARM.
 - Add unit test for a basic add.
 - Add unit test for a basic add (stack values).
 - Add new mechanism to emit assembly code.
@@ -113,10 +124,10 @@
 - [DONE] Update scc binary to support taking a source c file and emitting AST IR.
 - [DONE] Update scc binary to support taking a source c file and emitting high level SIR.
 - [DONE] Update scc binary to support taking a source c file and emitting LIR.
-- Update scc binary to support taking a source c file and ASM SIR.
-- Update scc binary to support taking a source c file and emitting ASM file.
-- Update scc binary to support taking a source c file and emitting object binary.
-- Update scc binary to support taking a source c file and emitting binary file.
+- Update scc binary to support taking a source c file and emitting ASM SIR.
+- Update scc binary to support taking a source c file and emitting an ASM file.
+- Update scc binary to support taking a source c file and emitting an object file.
+- Update scc binary to support taking a source c file and emitting a binary file.
 - ...
 
 #### P1 Features #####
@@ -153,8 +164,6 @@ Divide IRContent between IR Nodes and Op Infos:
 
 - @TODO[I7][XTEST]: Avoid cloning all annotations for each TestConfig and just pass them around.
 
-- @TODO[I8][SIR-CORE]: Find consistent way to register ops / transforms which avoids duplicate registrations.
-
 - @TODO[I9][SIR-INTERPRETER]: Make the Interpreter memory safe.
     SIR represents a IR / language without safety guarantees.
     Instead we should have the interpreter ensuring every potentially operation we do is actually safe.
@@ -164,3 +173,9 @@ Divide IRContent between IR Nodes and Op Infos:
     Currently we use Attributes to represent all values in the interpreter.
     First, it's slow.
     Second, it'll give us incorrect results / crashes if the IR is doing weird things with the pointers.
+
+- @[TODO][I11][SIR-BACKEND]: Re-enable verifiers for register attrs.
+    Before, the register name could be checked to make sure it exists.
+    It's not possible anymore, because IRVerifier is in sir_core, and the backend infos is in sir_transforms.
+    So we can't access the backend in the verifier without breaking the dependencies.
+    It's not that important anyway to be abble to verify the registers for now.

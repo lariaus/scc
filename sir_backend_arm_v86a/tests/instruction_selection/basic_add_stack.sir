@@ -1,0 +1,25 @@
+// XTEST: sir-opt --instruction-selection
+// XTEST-OUTPUT-CHECK
+
+module {
+
+// CHECK: arm.proc @my_add ins [mk_w:0, mk_w:1] outs [mk_w:2] frame_size = 16
+// CHECK-NEXT: arm.str mk_w:0, [sp, #12]
+// CHECK-NEXT: arm.str mk_w:1, [sp, #8]
+// CHECK-NEXT: arm.ldr mk_w:3, [sp, #12]
+// CHECK-NEXT: arm.ldr mk_w:4, [sp, #8]
+// CHECK-NEXT: arm.add mk_w:2, mk_w:3, mk_w:4
+// CHECK-NEXT: arm.ret 
+
+function @my_add(%arg0: i32, %arg1: i32) -> (i32) {
+    %0 = lir.alloca ptr<i32>, align 4
+    lir.store %arg0, %0 : ptr<i32>
+    %1 = lir.alloca ptr<i32>, align 4
+    lir.store %arg1, %1 : ptr<i32>
+    %2 = lir.load %0 : ptr<i32>
+    %3 = lir.load %1 : ptr<i32>
+    %4 = lir.iadd %2, %3 : i32
+    return %4 : i32
+}
+
+}

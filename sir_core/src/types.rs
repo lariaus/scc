@@ -142,6 +142,14 @@ impl FloatType {
     pub fn f64() -> Type {
         Type::Float(FloatType::F64)
     }
+
+    /// Returns the numer of bits to store the type.
+    pub fn bitdwith(&self) -> usize {
+        match self {
+            FloatType::F32 => 32,
+            FloatType::F64 => 64,
+        }
+    }
 }
 
 impl TypeSubClass for FloatType {

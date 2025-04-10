@@ -518,6 +518,107 @@ impl IRParsableObject for PointerAttr {
     }
 }
 
+// Represent any constant pointer value.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct RegisterAttr {
+    name: String,
+    vreg_idx: Option<usize>,
+}
+
+impl RegisterAttr {
+    /// Build a new real register.
+    pub fn new(name: String) -> Attribute {
+        Attribute::Register(Self {
+            name,
+            vreg_idx: None,
+        })
+    }
+
+    /// Build a new real register.
+    pub fn new_vreg(name: String, idx: usize) -> Attribute {
+        Attribute::Register(Self {
+            name,
+            vreg_idx: Some(idx),
+        })
+    }
+
+    /// Returns the register name.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Returns the register idx if it's a virtual register.
+    /// Or returns none.
+    pub fn vreg_idx(&self) -> Option<usize> {
+        self.vreg_idx
+    }
+
+    /// Return true if this is a real register.
+    pub fn is_real(&self) -> bool {
+        self.vreg_idx.is_none()
+    }
+
+    /// Return true if this is a virtual register.
+    pub fn is_virtual(&self) -> bool {
+        self.vreg_idx.is_some()
+    }
+}
+
+impl AttributeSubClass for RegisterAttr {
+    fn is_of_type(attr: &Attribute) -> bool {
+        match attr {
+            Attribute::Register(_) => true,
+            _ => false,
+        }
+    }
+
+    fn downcast_to_self<'a>(attr: &'a Attribute) -> Option<&'a Self> {
+        match attr {
+            Attribute::Register(attr) => Some(attr),
+            _ => None,
+        }
+    }
+
+    fn get_typename() -> &'static str {
+        "Register"
+    }
+
+    fn get_type(&self) -> Option<&Type> {
+        None
+    }
+}
+
+impl IRPrintableObject for RegisterAttr {
+    fn print(&self, printer: &mut IRPrinter) -> Result<(), std::io::Error> {
+        write!(printer.os(), "#reg<{}", self.name())?;
+        if let Some(idx) = self.vreg_idx() {
+            write!(printer.os(), ":{}", idx)?;
+        }
+        write!(printer.os(), ">")
+    }
+}
+
+impl IRParsableObject for RegisterAttr {
+    fn parse(parser: &mut crate::ir_parser::IRParser) -> Option<Self> {
+        parser.consume_sym_or_error(TokenValue::sym_hash())?;
+        parser.consume_identifier_val_or_error("reg")?;
+        parser.consume_sym_or_error(TokenValue::sym_lt())?;
+
+        let name = parser
+            .consume_identifier_or_error()?
+            .take_identifier()
+            .unwrap();
+        let vreg_idx = if parser.try_consume_sym(TokenValue::sym_colon()) {
+            Some(parser.consume_int_or_error()?.get_int().unwrap() as usize)
+        } else {
+            None
+        };
+
+        parser.consume_sym_or_error(TokenValue::sym_gt())?;
+        Some(RegisterAttr { name, vreg_idx })
+    }
+}
+
 // Represent all possible Attributes in the IR.
 #[derive(Debug, Clone, PartialEq, Hash)]
 pub enum Attribute {
@@ -528,6 +629,7 @@ pub enum Attribute {
     Dict(DictAttr),
     Type(TypeAttr),
     Ptr(PointerAttr),
+    Register(RegisterAttr),
 }
 
 impl Attribute {
@@ -591,6 +693,7 @@ impl Attribute {
             Attribute::Dict(attr) => attr.get_type(),
             Attribute::Type(attr) => attr.get_type(),
             Attribute::Ptr(attr) => attr.get_type(),
+            Attribute::Register(attr) => attr.get_type(),
         }
     }
 
@@ -616,6 +719,7 @@ impl IRPrintableObject for Attribute {
             Attribute::Dict(attr) => attr.print(printer),
             Attribute::Type(attr) => attr.print(printer),
             Attribute::Ptr(attr) => attr.print(printer),
+            Attribute::Register(attr) => attr.print(printer),
         }
     }
 }
@@ -649,6 +753,8 @@ impl IRParsableObject for Attribute {
 
             if attr_id == "ptr" {
                 Some(Attribute::Ptr(PointerAttr::parse(parser)?))
+            } else if attr_id == "reg" {
+                Some(Attribute::Register(RegisterAttr::parse(parser)?))
             } else {
                 let err_tok = parser.peek_token().clone();
                 parser.emit_bad_token_error(&err_tok, format!("attribute value"));
@@ -780,5 +886,21 @@ mod tests {
             Attribute::from_string_repr("#ptr<0x2b>: ptr<i32>".to_owned())
         );
         check_same_repr("#ptr<0x33fb23>: ptr<i32>");
+    }
+
+    #[test]
+    fn test_reg_print_parse() {
+        let attr = RegisterAttr::new("sp".to_owned());
+        assert_eq!(attr.to_string_repr(), "#reg<sp>");
+        assert_eq!(attr, Attribute::from_string_repr("#reg<sp>".to_owned()));
+        check_same_repr("#reg<mylong_reg_name>");
+
+        let attr = RegisterAttr::new_vreg("mk_fp".to_owned(), 6);
+        assert_eq!(attr.to_string_repr(), "#reg<mk_fp:6>");
+        assert_eq!(
+            attr,
+            Attribute::from_string_repr("#reg<mk_fp:6>".to_owned())
+        );
+        check_same_repr("#reg<my_virtual_reg:345>");
     }
 }

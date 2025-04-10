@@ -36,6 +36,7 @@ use sir_low_level::{
     low_level_types,
     tags::TAG_LOW_LEVEL_OP,
 };
+use sir_transform::context_registry::ContextRegistry;
 
 /////////////////////////////////////////////////////////////////////////
 // ModuleOp implementation
@@ -146,7 +147,7 @@ impl<'a> ModuleOp<'a> {
     }
 }
 
-fn register_module_op(ctx: &mut IRContext) {
+fn register_module_op(ctx: &mut ContextRegistry) {
     let mut infos = OperationTypeBuilder::new();
     infos.set_opname(MODULE_OPNAME);
     infos.set_impl::<ModuleOp>();
@@ -431,7 +432,7 @@ impl<'a> FunctionOp<'a> {
     }
 }
 
-fn register_function_op(ctx: &mut IRContext) {
+fn register_function_op(ctx: &mut ContextRegistry) {
     let mut infos = OperationTypeBuilder::new();
     infos.set_opname(FUNCTION_OPNAME);
     infos.set_impl::<FunctionOp>();
@@ -772,7 +773,7 @@ impl<'a> ReturnOp<'a> {
     }
 }
 
-fn register_return_op(ctx: &mut IRContext) {
+fn register_return_op(ctx: &mut ContextRegistry) {
     let mut infos = OperationTypeBuilder::new();
     infos.set_opname(RETURN_OPNAME);
     infos.set_impl::<ReturnOp>();
@@ -1073,7 +1074,7 @@ impl<'a> GenericConstantOp<'a> {
     }
 }
 
-fn register_generic_constant_op(ctx: &mut IRContext) {
+fn register_generic_constant_op(ctx: &mut ContextRegistry) {
     let mut infos = OperationTypeBuilder::new();
     infos.set_opname(GENERIC_CONSTANT_OPNAME);
     infos.set_impl::<GenericConstantOp>();
@@ -1139,11 +1140,13 @@ impl<'a> GenericConstantOp<'a> {
 
 // @XGENBEGIN RegisterOps register_func_ops
 pub fn register_func_ops(ctx: &mut IRContext) {
-    register_module_op(ctx);
-    register_function_op(ctx);
-    register_return_op(ctx);
-    register_generic_constant_op(ctx);
-    ctx.register_constant_builder(GenericConstantOp::build_constant);
+    ContextRegistry::exec_register_fn(ctx, "__sir/ops/register_func_ops", |mut registry| {
+        register_module_op(&mut registry);
+        register_function_op(&mut registry);
+        register_return_op(&mut registry);
+        register_generic_constant_op(&mut registry);
+        registry.register_constant_builder(GenericConstantOp::build_constant);
+    });
 }
 
 // @XGENEND

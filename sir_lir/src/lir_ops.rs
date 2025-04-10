@@ -29,6 +29,7 @@ use sir_interpreter::{
     interpreter::SIRInterpreter,
 };
 use sir_low_level::{low_level_types, tags::TAG_LOW_LEVEL_OP};
+use sir_transform::context_registry::ContextRegistry;
 
 /////////////////////////////////////////////////////////////////////////
 // LIRType implementation
@@ -236,7 +237,7 @@ impl<'a> LIRIAddOp<'a> {
     }
 }
 
-fn register_l_i_r_i_add_op(ctx: &mut IRContext) {
+fn register_l_i_r_i_add_op(ctx: &mut ContextRegistry) {
     let mut infos = OperationTypeBuilder::new();
     infos.set_opname(L_I_R_I_ADD_OPNAME);
     infos.set_impl::<LIRIAddOp>();
@@ -506,7 +507,7 @@ impl<'a> LIRLoadOp<'a> {
     }
 }
 
-fn register_l_i_r_load_op(ctx: &mut IRContext) {
+fn register_l_i_r_load_op(ctx: &mut ContextRegistry) {
     let mut infos = OperationTypeBuilder::new();
     infos.set_opname(L_I_R_LOAD_OPNAME);
     infos.set_impl::<LIRLoadOp>();
@@ -759,7 +760,7 @@ impl<'a> LIRStoreOp<'a> {
     }
 }
 
-fn register_l_i_r_store_op(ctx: &mut IRContext) {
+fn register_l_i_r_store_op(ctx: &mut ContextRegistry) {
     let mut infos = OperationTypeBuilder::new();
     infos.set_opname(L_I_R_STORE_OPNAME);
     infos.set_impl::<LIRStoreOp>();
@@ -1038,7 +1039,7 @@ impl<'a> LIRAllocaOp<'a> {
     }
 }
 
-fn register_l_i_r_alloca_op(ctx: &mut IRContext) {
+fn register_l_i_r_alloca_op(ctx: &mut ContextRegistry) {
     let mut infos = OperationTypeBuilder::new();
     infos.set_opname(L_I_R_ALLOCA_OPNAME);
     infos.set_impl::<LIRAllocaOp>();
@@ -1097,10 +1098,12 @@ impl<'a> LIRAllocaOp<'a> {
 
 // @XGENBEGIN RegisterOps register_lir_ops
 pub fn register_lir_ops(ctx: &mut IRContext) {
-    register_l_i_r_i_add_op(ctx);
-    register_l_i_r_load_op(ctx);
-    register_l_i_r_store_op(ctx);
-    register_l_i_r_alloca_op(ctx);
+    ContextRegistry::exec_register_fn(ctx, "__sir/ops/register_lir_ops", |mut registry| {
+        register_l_i_r_i_add_op(&mut registry);
+        register_l_i_r_load_op(&mut registry);
+        register_l_i_r_store_op(&mut registry);
+        register_l_i_r_alloca_op(&mut registry);
+    });
 }
 
 // @XGENEND

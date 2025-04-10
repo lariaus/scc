@@ -47,6 +47,17 @@ Example: run a C function using the interpreter:
 cargo run --bin scc-runner -- tests/test_basic_add.c --function my_add --inputs 8 13 --mode interpreter
 ```
 
+### sir_backend
+
+Library that handles all compiler steps to go from SIR to assembly code.
+This library only defines the backend primitives and algorithms.
+Each backend is implemented in their independant library.
+
+### sir_backend_arm_v86a
+
+SIR backend for Armv8.6-A architecture.
+This can be used to compile files to run on macos.
+
 ### sir_core
 
 Core part of the SIR library.
@@ -73,6 +84,10 @@ Define mathematic-like ops.
 Part of the SIR Library.
 Define high-level ops related to memory (load / store / alloc / pointer ops)
 
+### sir_opt
+
+Library to easily run SIR transforms / passes through the 
+
 ### sir-opt (binary)
 
 Test the SIR compiler optimization passes manually.
@@ -82,7 +97,7 @@ Example:
 cargo run --bin sir-opt -- -i sir_math/tests/test_iadd_i32.sir --legalize-to-low-level --print-ir-before-all
 ```
 
-### sir_pieplines
+### sir_pipelines
 
 Library with several SIR pipelines to control general lowering / backend of IR.
 
@@ -99,6 +114,18 @@ Example: run a SIR function using the interpreter:
 cargo run --bin sir-runner -- "tests/test_interpret_iadd.sir" --function "foo" --inputs 8 13 --mode interpreter
 ```
 
+### sir_test_ops
+
+Library that contains several SIR Ops / passes / transforms for testing purposes.
+This lives in its own directory as it tests different sir libraries.
+It also contains good examples of how to work with sir.
+
+### sir_transforms
+
+Library containing many tools needed to translate / transform / optimize SIR code.
+Defines also the whole system of passes / PassManager.
+
+
 ### xgen
 
 XGen is a python library used to generate rust code for all the op defs.
@@ -114,6 +141,10 @@ This is inspired from LLVM FileCheck tool, but integrated directly with the rust
 
 ## Experiments / Tests
 
-### Generate LLVM IR from C
+### Generate LLVM IR from C (clang)
 
 clang -O3 tests/test_add.c -S -emit-llvm -o tests/out.ll
+
+### Generate ASM from C (clang)
+
+clang -O0 tests/test_basic_add.c -S -o tests/out.s

@@ -1,11 +1,10 @@
-use sir_core::{
-    compiler_setup::CompilerSetup, ir_context::IRContext, pass_manager::register_core_passes,
-    sir_opt_runner::SIROptRunner,
-};
+use sir_core::ir_context::IRContext;
 use sir_func::{func_ops::register_func_ops, func_transforms::register_func_transforms};
 use sir_lir::lir_ops::register_lir_ops;
 use sir_low_level::register_low_level_passes;
 use sir_math::{math_ops::register_math_ops, math_transforms::register_math_transforms};
+use sir_opt::sir_opt_runner::SIROptRunner;
+use sir_transform::register::register_core_passes;
 use xtest::{
     test_driver::{OutputTestWriter, TestDriver, TestRunner},
     test_file::TestConfig,
@@ -14,17 +13,15 @@ use xtest::{
 #[derive(Default)]
 struct SIROptTestRunner {}
 
-fn register_ops(ctx: &mut IRContext) {
+fn setup_context(ctx: &mut IRContext) {
     register_func_ops(ctx);
     register_math_ops(ctx);
     register_lir_ops(ctx);
-}
 
-fn setup_compiler(cs: &mut CompilerSetup) {
-    register_core_passes(cs);
-    register_low_level_passes(cs);
-    register_math_transforms(cs);
-    register_func_transforms(cs);
+    register_core_passes(ctx);
+    register_low_level_passes(ctx);
+    register_math_transforms(ctx);
+    register_func_transforms(ctx);
 }
 
 impl TestRunner for SIROptTestRunner {
@@ -40,9 +37,7 @@ impl TestRunner for SIROptTestRunner {
         );
         runner.set_manually_pass_input_file(true);
         runner.set_input_path(cfg.path().to_owned());
-
-        runner.register_setup_callback(setup_compiler);
-        runner.register_setup_ctx_callback(register_ops);
+        runner.register_setup_ctx_callback(setup_context);
 
         let args = cfg.command()[1..].iter().map(|x| x.to_owned()).collect();
         runner.setup(args);

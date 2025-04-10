@@ -1,16 +1,17 @@
 use iostreams::location::Location;
 
-use crate::{
+use sir_core::{
     attributes::Attribute,
     block::Block,
-    ir_builder::{IRBuilder, InsertionPoint, OpBuilderState},
+    ir_builder::{BlockArgumentReplacements, IRBuilder, InsertionPoint, OpBuilderState},
     ir_context::IRContext,
     ir_data::{BlockID, OperationID, ValueID},
     ir_printer::IRPrintableObject,
     operation::{GenericOperation, OperationImpl},
-    type_converter::TypeConverter,
     types::Type,
 };
+
+use crate::type_converter::TypeConverter;
 
 // Options for the rewriter.
 pub struct IRRewriterOptions {
@@ -29,6 +30,19 @@ pub enum OpChange {
     Updated,
     ReplacedWithOp(OperationID),
     ReplacedWithVals(Vec<ValueID>),
+}
+
+impl OpChange {
+    // Given the old op before applying the changes, get the new operation.
+    // Returns None if op was erased / replaced by values.
+    pub fn get_replaced_op(&self, old_op: OperationID) -> Option<OperationID> {
+        match self {
+            OpChange::Erased => None,
+            OpChange::Updated => Some(old_op),
+            OpChange::ReplacedWithOp(new_op) => Some(*new_op),
+            OpChange::ReplacedWithVals(_) => None,
+        }
+    }
 }
 
 // Struct to keep track of all the changes happened to the IR. (targetting one op)
@@ -109,6 +123,15 @@ impl<'a> IRRewriter<'a> {
         self.updating_changes.as_ref()
     }
 
+    /// Take owernship of the changes applied to the IR, after calling set_updating_op.
+    /// This method also remove the updating op (set_updating_op(None)).
+    pub fn take_updating_changes(&mut self) -> Option<IRRewriteChanges> {
+        let mut changes = None;
+        std::mem::swap(&mut changes, &mut self.updating_changes);
+        self.set_updating_op(None);
+        changes
+    }
+
     /// Returns the associated builder.
     pub fn builder(&mut self) -> &mut IRBuilder<'a> {
         &mut self.builder
@@ -170,7 +193,7 @@ impl<'a> IRRewriter<'a> {
 
         // Replace the outputs.
         for (old_val, new_val) in old_values.iter().zip(new_values) {
-            self.ctx().replace_all_uses_of_value(*old_val, *new_val);
+            self.builder.replace_all_uses_of_value(*old_val, *new_val);
         }
 
         // Erase the op.
@@ -180,7 +203,7 @@ impl<'a> IRRewriter<'a> {
                 self.ctx().get_generic_operation(op).to_string_repr()
             );
         }
-        self.ctx().erase_op(op);
+        self.builder.erase_op(op);
 
         // Update the changes object.
         if let Some(changes) = &mut self.updating_changes {
@@ -204,7 +227,7 @@ impl<'a> IRRewriter<'a> {
                 self.ctx().get_generic_operation(op).to_string_repr()
             );
         }
-        self.ctx().erase_op(op);
+        self.builder.erase_op(op);
 
         // Update the changes object.
         if let Some(changes) = &mut self.updating_changes {
@@ -253,7 +276,7 @@ impl<'a> IRRewriter<'a> {
 
         // Replace the outputs.
         for (old_val, new_val) in old_values.iter().zip(new_values) {
-            self.ctx().replace_all_uses_of_value(*old_val, new_val);
+            self.builder.replace_all_uses_of_value(*old_val, new_val);
         }
 
         // Erase the op.
@@ -263,7 +286,7 @@ impl<'a> IRRewriter<'a> {
                 self.ctx().get_generic_operation(op).to_string_repr()
             );
         }
-        self.ctx().erase_op(op);
+        self.builder.erase_op(op);
 
         // Update the changes object.
         if let Some(changes) = &mut self.updating_changes {
@@ -278,7 +301,11 @@ impl<'a> IRRewriter<'a> {
         loc: Location,
         b: OpBuilderState<'b, T>,
     ) -> T {
+        let is_debug = self.debug_mode();
         let res = self.builder.create_op(loc, b);
+        if is_debug {
+            println!("IRRewriter: created op {}", res.to_string_repr());
+        }
         if let Some(changes) = &mut self.updating_changes {
             changes.created_ops.push(res.as_id());
         }
@@ -325,7 +352,17 @@ impl<'a> IRRewriter<'a> {
     }
 
     // Splice the content of block at `pos`, leaving `block` empty
-    pub fn splice_block_at(&mut self, block: BlockID, pos: InsertionPoint, replace_args: bool) {
-        self.builder.splice_block_at(block, pos, replace_args)
+    pub fn splice_block_at(
+        &mut self,
+        block: BlockID,
+        pos: InsertionPoint,
+        new_args: BlockArgumentReplacements,
+    ) {
+        self.builder.splice_block_at(block, pos, new_args)
+    }
+
+    // Set the insertion point of the builder.
+    pub fn set_insertion_point(&mut self, ip: InsertionPoint) {
+        self.builder.set_insertion_point(ip);
     }
 }

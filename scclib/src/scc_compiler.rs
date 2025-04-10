@@ -9,24 +9,29 @@ use cast::{
 use diagnostics::diagnostics::CompilerInputs;
 use iostreams::source_streams_set::SourceStreamsSet;
 use sir_core::{
-    compiler_setup::CompilerSetup,
     ir_context::IRContext,
     ir_data::OperationID,
     ir_printer::{IRPrinter, IRPrinterOptions},
-    pass_manager::{PassManager, PassManagerOptions},
 };
 use sir_pipelines::{
-    register::{register_all_sir_ops, register_all_sir_passes},
+    register::{register_all_backends, register_all_sir_ops, register_all_sir_passes},
     sir_to_lir::create_sir_to_lir_pipeline,
+};
+use sir_transform::{
+    pass_manager::{PassManager, PassManagerOptions},
+    sir_backend::{BackendsRegistry, SIRBackend, SIRBackendOptions},
 };
 
 /// Struct containing all options to configure the SCCCompiler.
 pub struct SCCCompilerOptions {
     // If true, the compiler will dump the generated CAST to stdout.
-    dump_cast: bool,
+    pub dump_cast: bool,
 
     // If true, the compiler will dump the generated SIR to stdout.
-    dump_sir: bool,
+    pub dump_sir: bool,
+
+    // Options propagated to the SIR Backend.
+    backend_opts: SIRBackendOptions,
 }
 
 impl SCCCompilerOptions {
@@ -35,6 +40,7 @@ impl SCCCompilerOptions {
         Self {
             dump_cast: false,
             dump_sir: false,
+            backend_opts: SIRBackendOptions::new(),
         }
     }
 }
@@ -52,8 +58,8 @@ enum SIRKind {
 /// Class handling all compilation of SCC source files.
 pub struct SCCCompiler {
     opts: SCCCompilerOptions,
-    cs: CompilerSetup,
     ctx: IRContext,
+    backend: SIRBackend,
     ss: SourceStreamsSet,
     cast: Option<SRCCResult<ASTNode>>,
     root: Option<SRCCResult<OperationID>>,
@@ -63,16 +69,20 @@ pub struct SCCCompiler {
 impl SCCCompiler {
     /// Create a new compiler with `opts`.
     pub fn new(opts: SCCCompilerOptions) -> Self {
-        // Prepare the IRContetx
-        let mut cs = CompilerSetup::new();
-        register_all_sir_passes(&mut cs);
+        // Prepare the IRContext.
         let mut ctx = IRContext::new();
         register_all_sir_ops(&mut ctx);
+        register_all_sir_passes(&mut ctx);
+
+        // Prepare the backend.
+        let mut backend_registry = BackendsRegistry::new();
+        register_all_backends(&mut backend_registry);
+        let backend = SIRBackend::make(backend_registry, opts.backend_opts.clone(), &mut ctx);
 
         Self {
             opts,
-            cs,
             ctx,
+            backend,
             ss: SourceStreamsSet::new(),
             cast: None,
             root: None,
@@ -229,13 +239,12 @@ impl SCCCompiler {
 
         // Prepare the passes.
         let pm_opts = PassManagerOptions::new();
-        let mut pm = PassManager::new(pm_opts, &self.cs);
+        let mut pm = PassManager::new(pm_opts);
         create_sir_to_lir_pipeline(&mut pm);
 
         // Run the passes.
-        let pm_runner = pm.make_runner();
-        if pm_runner
-            .run_all(&mut self.ctx, root)
+        if pm
+            .run(&self.backend, &mut self.ctx, root)
             .resolve(CompilerInputs::Sources(&self.ss))
             .is_none()
         {

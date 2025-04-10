@@ -3,18 +3,18 @@ use std::marker::PhantomData;
 use diagnostics::diagnostics::{emit_error, DiagnosticsEmitter, ErrorOrSuccess};
 use sir_core::{
     attributes::Attribute,
-    canonicalize_pass::CanonicalizePass,
-    compiler_setup::CompilerSetup,
+    ir_context::IRContext,
     ir_data::OperationID,
-    ir_rewriter::IRRewriter,
-    ir_transforms::OpTransform,
     op_interfaces::ConstantOp,
     operation::{GenericOperation, OperationImpl},
-    pass_manager::PassRegistration,
     value::Value,
 };
 use sir_lir::lir_ops::LIRIAddOp;
 use sir_low_level::legalize_pass::LegalizeToLowLevelPass;
+use sir_transform::pass::PassRegistration;
+use sir_transform::{
+    canonicalize_pass::CanonicalizePass, ir_rewriter::IRRewriter, ir_transforms::OpTransform,
+};
 
 use crate::math_ops::MathIAddOp;
 
@@ -129,14 +129,27 @@ impl<SrcOp: OperationImpl<'static>, DstOp: OperationImpl<'static>> OpTransform
 }
 
 /// Register all transforms related to math operations.
-pub fn register_math_transforms(cs: &mut CompilerSetup) {
-    // Canonicalization patterns.
-    cs.register_extra_pass_transforms(CanonicalizePass::get_pass_name(), |transforms| {
-        transforms.add_transform(CanonicalizeIAddOp);
-    });
+pub fn register_math_transforms(ctx: &mut IRContext) {
+    sir_transform::context_registry::ContextRegistry::exec_register_fn(
+        ctx,
+        "__sir/transforms/register_math_transforms",
+        |mut registry| {
+            // Canonicalization patterns.
+            registry.register_extra_pass_transforms(
+                CanonicalizePass::get_pass_name(),
+                |transforms| {
+                    transforms.add_transform(CanonicalizeIAddOp);
+                },
+            );
 
-    // Legalization (LowLevel) patterns.
-    cs.register_extra_pass_transforms(LegalizeToLowLevelPass::get_pass_name(), |transforms| {
-        transforms.add_transform(LegalizeElementwiseOps::<MathIAddOp, LIRIAddOp>::new());
-    });
+            // Legalization (LowLevel) patterns.
+            registry.register_extra_pass_transforms(
+                LegalizeToLowLevelPass::get_pass_name(),
+                |transforms| {
+                    transforms
+                        .add_transform(LegalizeElementwiseOps::<MathIAddOp, LIRIAddOp>::new());
+                },
+            );
+        },
+    );
 }

@@ -2,14 +2,17 @@ use std::collections::HashSet;
 
 use diagnostics::diagnostics::{emit_error, DiagnosticsEmitter, ErrorOrSuccess};
 
-use crate::{
+use sir_core::{
     ir_context::IRContext,
     ir_data::OperationID,
     ir_printer::IRPrintableObject,
-    ir_rewriter::{IRRewriter, IRRewriterOptions, OpChange},
     operation::{GenericOperation, OperationImpl},
-    type_converter::TypeConverter,
     types::Type,
+};
+
+use crate::{
+    ir_rewriter::{IRRewriteChanges, IRRewriter, IRRewriterOptions, OpChange},
+    type_converter::TypeConverter,
 };
 
 /// Perform a transformation on the IR.
@@ -89,6 +92,39 @@ impl TransformsList {
         }
 
         Err(())
+    }
+
+    /// Try to transform an op with the rewriter, and return the changes.
+    /// Wrapper around self.transform_op.
+    pub fn try_transform_op_with_changes(
+        &self,
+        diagnostics: &mut DiagnosticsEmitter,
+        rewriter: &mut IRRewriter,
+        op: OperationID,
+    ) -> Result<IRRewriteChanges, ()> {
+        if rewriter.debug_mode() {
+            eprintln!("TransformsList: trying to apply pattern");
+        }
+
+        // First prepare the rewriter.
+        rewriter.set_updating_op(Some(op));
+
+        // Try to transform the op.
+        let res = self.transform_op(diagnostics, rewriter, op);
+        if rewriter.debug_mode() && res.is_ok() {
+            eprintln!("TransformsList: Pattern application success !");
+        } else if rewriter.debug_mode() && res.is_err() {
+            eprintln!("TransformsList: no matching pattern found");
+        }
+
+        // Failed to apply patterns.
+        if res.is_err() {
+            return Err(());
+        }
+
+        // Return the changes.
+        let changes = rewriter.take_updating_changes().unwrap();
+        Ok(changes)
     }
 }
 

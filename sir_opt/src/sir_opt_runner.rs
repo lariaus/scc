@@ -2,23 +2,25 @@ use std::fs::File;
 
 use diagnostics::diagnostics::CompilerInputs;
 use iostreams::source_streams_set::SourceStreamsSet;
+use sir_transform::{
+    pass_manager::{PassManager, PassManagerOptions},
+    sir_backend::{BackendsRegistry, SIRBackend, SIRBackendOptions},
+    transforms_registry::TransformsRegistry,
+};
 use utils::{argparse::ArgumentsParser, stdout_writer::StdoutWriter};
 
-use crate::{
-    compiler_setup::CompilerSetup,
+use sir_core::{
     ir_context::IRContext,
     ir_data::OperationID,
     ir_parser::{IRParser, IRParserOpts},
     ir_printer::{IRPrinter, IRPrinterOptions},
     ir_verifier::{IRVerifier, IRVerifierOptions},
-    pass_manager::{PassManager, PassManagerOptions},
 };
 
 // This class is used to run and control the behaviour of the runner
 pub struct SIROptRunner {
-    cs: CompilerSetup,
-    setup_fns: Vec<Box<dyn FnOnce(&mut CompilerSetup) -> ()>>,
     setup_ctx_fns: Vec<Box<dyn FnOnce(&mut IRContext) -> ()>>,
+    setup_backend_fns: Vec<Box<dyn FnOnce(&mut BackendsRegistry) -> ()>>,
     input_path: Option<String>,
     output_path: Option<String>,
     allow_unregistered_ops: bool,
@@ -28,9 +30,11 @@ pub struct SIROptRunner {
     print_ir_after_all_passes: bool,
     print_ir_before_pass: Option<String>,
     print_ir_after_pass: Option<String>,
+    backend_name: Option<String>,
     pre_pipeline_builder: Option<Box<dyn FnOnce(&mut PassManager) -> ()>>,
     post_pipeline_builder: Option<Box<dyn FnOnce(&mut PassManager) -> ()>>,
     ctx: Option<IRContext>,
+    backend: Option<SIRBackend>,
     ap: ArgumentsParser,
 }
 
@@ -38,9 +42,8 @@ impl SIROptRunner {
     // Create a new runner.
     pub fn new(bin_name: String, description: String, version: String) -> Self {
         Self {
-            cs: CompilerSetup::new(),
-            setup_fns: Vec::new(),
             setup_ctx_fns: Vec::new(),
+            setup_backend_fns: Vec::new(),
             input_path: None,
             output_path: None,
             allow_unregistered_ops: false,
@@ -50,9 +53,11 @@ impl SIROptRunner {
             print_ir_after_all_passes: false,
             print_ir_before_pass: None,
             print_ir_after_pass: None,
+            backend_name: None,
             pre_pipeline_builder: None,
             post_pipeline_builder: None,
             ctx: None,
+            backend: None,
             ap: ArgumentsParser::new(bin_name, description, version),
         }
     }
@@ -107,7 +112,7 @@ impl SIROptRunner {
         self.print_ir_before_pass.as_ref().map(|s| s.as_str())
     }
 
-    // If true, print the IR before running the specified pass.
+    // If set, print the IR before running the specified pass.
     pub fn set_print_ir_before_pass(&mut self, print_ir_before_pass: String) {
         self.print_ir_before_pass = Some(print_ir_before_pass);
     }
@@ -116,9 +121,18 @@ impl SIROptRunner {
         self.print_ir_after_pass.as_ref().map(|s| s.as_str())
     }
 
-    // If true, print the IR after running the specified pass.
+    // If set, print the IR after running the specified pass.
     pub fn set_print_ir_after_pass(&mut self, print_ir_after_pass: String) {
         self.print_ir_after_pass = Some(print_ir_after_pass);
+    }
+
+    pub fn backend_name(&self) -> Option<&str> {
+        self.backend_name.as_ref().map(|s| s.as_str())
+    }
+
+    // If set, select the specified backend.
+    pub fn set_backend_name(&mut self, backend_name: String) {
+        self.backend_name = Some(backend_name);
     }
 
     /// Set a function that will be called to setup the passes run by the PassManager.
@@ -159,14 +173,6 @@ impl SIROptRunner {
         self.output_path = Some(path);
     }
 
-    // Register a callback for the CompilerSetup
-    pub fn register_setup_callback<F: FnOnce(&mut CompilerSetup) -> () + 'static>(
-        &mut self,
-        callback: F,
-    ) {
-        self.setup_fns.push(Box::new(callback));
-    }
-
     // Register a setup callback for the IRContext.
     pub fn register_setup_ctx_callback<F: FnOnce(&mut IRContext) -> () + 'static>(
         &mut self,
@@ -175,8 +181,16 @@ impl SIROptRunner {
         self.setup_ctx_fns.push(Box::new(callback));
     }
 
+    // Register a setup callback for the SIRBackendBuilder.
+    pub fn register_setup_backend_callback<F: FnOnce(&mut BackendsRegistry) -> () + 'static>(
+        &mut self,
+        callback: F,
+    ) {
+        self.setup_backend_fns.push(Box::new(callback));
+    }
+
     // Setup the arguments parser.
-    fn _setup_args(&mut self) {
+    fn _setup_args(&mut self, ctx: &IRContext) {
         self.ap.add_flag(
             "--allow-unregistered-ops",
             None,
@@ -201,6 +215,13 @@ impl SIROptRunner {
             false,
             "Print the IR after running each pass",
         );
+        self.ap.add_option(
+            "--backend-name",
+            None,
+            false,
+            false,
+            "Name of the SIR backend to select for compilation",
+        );
         if !self.manually_pass_input_file {
             self.ap.add_option(
                 "--input-path",
@@ -219,9 +240,11 @@ impl SIROptRunner {
         );
 
         // Setup the arguments for the passes.
-        for infos in self.cs.get_registered_passes_builders().values() {
-            let pass_arg = format!("--{}", infos.name);
-            self.ap.add_flag(&pass_arg, None, true, infos.description);
+        if let Some(transform_registry) = TransformsRegistry::get(ctx) {
+            for infos in transform_registry.get_registered_passes_builders().values() {
+                let pass_arg = format!("--{}", infos.name);
+                self.ap.add_flag(&pass_arg, None, true, infos.description);
+            }
         }
     }
 
@@ -232,6 +255,9 @@ impl SIROptRunner {
         self.debug_mode = self.ap.get_flag("--debug");
         self.print_ir_before_all_passes = self.ap.get_flag("--print-ir-before-all");
         self.print_ir_after_all_passes = self.ap.get_flag("--print-ir-after-all");
+        if let Some(backend_name) = self.ap.get_option_value("--backend-name") {
+            self.backend_name = Some(backend_name.to_owned());
+        }
         if !self.manually_pass_input_file {
             if let Some(input_path) = self.ap.get_option_value("--input-path") {
                 self.input_path = Some(input_path.to_owned());
@@ -244,16 +270,6 @@ impl SIROptRunner {
 
     // Setup the runner with the args.
     pub fn setup(&mut self, args: Vec<String>) {
-        // Setup the Compiler.
-        let mut setup_fns = Vec::new();
-        std::mem::swap(&mut setup_fns, &mut self.setup_fns);
-        for fun in setup_fns {
-            fun(&mut self.cs)
-        }
-
-        // Setup the CLI args.
-        self._setup_args();
-
         // Create the context.
         let mut ctx = IRContext::new();
 
@@ -264,8 +280,27 @@ impl SIROptRunner {
             fun(&mut ctx)
         }
 
+        // Setup the CLI args.
+        self._setup_args(&ctx);
+
         // Parse the arguments.
         self._parse_args(args);
+
+        // Setup the backend.
+        let mut backend_opts = SIRBackendOptions::new();
+        if let Some(backend_name) = &self.backend_name {
+            backend_opts.backend_name = Some(backend_name.to_owned());
+        }
+        let mut backend_registry = BackendsRegistry::new();
+
+        // Call all the setup backend fns.
+        let mut setup_backend_fns = Vec::new();
+        std::mem::swap(&mut setup_backend_fns, &mut self.setup_backend_fns);
+        for fun in setup_backend_fns {
+            fun(&mut backend_registry)
+        }
+
+        self.backend = Some(SIRBackend::make(backend_registry, backend_opts, &mut ctx));
 
         self.ctx = Some(ctx);
     }
@@ -305,7 +340,6 @@ impl SIROptRunner {
         }
 
         // Setup the PassManager.
-        let pm_passes = self.cs.get_registered_passes_builders();
         let mut pm_opts = PassManagerOptions::new();
         pm_opts.print_ir_before_all_passes = self.print_ir_before_all_passes;
         pm_opts.print_ir_after_all_passes = self.print_ir_after_all_passes;
@@ -316,7 +350,7 @@ impl SIROptRunner {
             pm_opts.print_ir_after_pass = Some(name.to_owned());
         }
         pm_opts.debug_mode = self.debug_mode;
-        let mut pm = PassManager::new(pm_opts, &self.cs);
+        let mut pm = PassManager::new(pm_opts);
 
         // Add pre passes.
         let mut pre_preline_builder = None;
@@ -326,10 +360,13 @@ impl SIROptRunner {
         }
 
         // Add all the registered passes with the CLI.
-        for arg in self.ap.get_parsed_args() {
-            let name = &arg.argname()[2..];
-            if pm_passes.contains_key(name) {
-                pm.add_pass_by_name(name);
+        if let Some(transforms_registry) = TransformsRegistry::get(ctx) {
+            let pm_passes = transforms_registry.get_registered_passes_builders();
+            for arg in self.ap.get_parsed_args() {
+                let name = &arg.argname()[2..];
+                if pm_passes.contains_key(name) {
+                    pm.add_pass_by_name(name);
+                }
             }
         }
 
@@ -340,11 +377,10 @@ impl SIROptRunner {
             post_pipeline_builder(&mut pm);
         }
 
-        let passes_runner = pm.make_runner();
-
         // Run the passes.
-        if passes_runner
-            .run_all(ctx, root_op)
+        let backend = self.backend.as_ref().unwrap();
+        if pm
+            .run(backend, ctx, root_op)
             .resolve_with_stream(CompilerInputs::Sources(&ss), os)
             .is_none()
         {

@@ -1,0 +1,11 @@
+[package]
+name = "sir_backend"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+diagnostics = { path = "../diagnostics" }
+parse = { path = "../parse" }
+sir_core = { path = "../sir_core" }
+sir_transform = { path = "../sir_transform" }
+utils = { path = "../utils" }

@@ -1,6 +1,9 @@
+use sir_core::{ir_context::IRContext, ir_data::OperationID};
+
 use crate::{
     ir_transforms::{apply_transforms_greedily, TransformsList},
-    pass_manager::{Pass, PassRegistration},
+    pass::{Pass, PassRegistration},
+    sir_backend::SIRBackend,
 };
 
 // Pass to execute common canonicalization transforms
@@ -22,9 +25,10 @@ impl CanonicalizePass {
 impl Pass for CanonicalizePass {
     fn run_on_operation(
         &self,
+        _backend: &SIRBackend,
         diagnostics: &mut diagnostics::diagnostics::DiagnosticsEmitter,
-        ctx: &mut crate::ir_context::IRContext,
-        op: crate::ir_data::OperationID,
+        ctx: &mut IRContext,
+        op: OperationID,
     ) -> diagnostics::diagnostics::ErrorOrSuccess {
         apply_transforms_greedily(ctx, diagnostics, &self.transforms, op, self.debug_mode);
         Ok(())

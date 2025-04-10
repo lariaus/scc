@@ -25,6 +25,18 @@ def rewrite_code_with_repl(s, values_dict):
 # XGEN SIROp Definition
 ########################################################
 
+# Helper method to get rid of all decorators around a parsed object
+def unwrap_decorators(raw_data):
+    decorators = []
+    while True:
+        if not isinstance(raw_data, dict) or '__decorator_kind' not in raw_data:
+            break
+        decorators.append(raw_data['__decorator_kind'])
+        raw_data = raw_data['value']
+    return raw_data, decorators
+
+
+
 # Wrapper class around a ModBase dict.
 class ModDefInfos:
 
@@ -44,10 +56,12 @@ class ValueDefInfos:
 class AttrDefInfos:
 
     def __init__(self, raw_data):
+        raw_data, decorators = unwrap_decorators(raw_data)
         self.name = raw_data["name"]
         self.attr_type = raw_data["attr_type"]
         self.getter_code = raw_data["getter_code"]
         self.verif_code = raw_data["verif_code"]
+        self.optional = 'optional' in decorators
 
 
 # Represent the definition of an SIR Operation class.
@@ -70,14 +84,10 @@ class OpDefInfos:
         self.has_constant_builder = False
         self.has_custom_verifier = False
         self.disable_default_builder = False
-        self.gen_minimal_fns_set = False
         self.extra_verif_lines = []
 
         # Go through the raw data to initialize the object
         self.opname = raw_data["opname"]
-        if self.opname.startswith('test.'):
-            # The test dialect will have lots of warnings about unused functions if we declare them all
-            self.gen_minimal_fns_set = True
 
         if "block" in raw_data:
             self.blocks = raw_data["block"]
@@ -182,12 +192,21 @@ class OpDefInfos:
         # Generate all attributes getters
         for attr in self.attrs:
             full_sym_name = '{}_ATTR_{}'.format(self.class_name_upper, attr.name.upper())
-            ofs.write('    pub fn get_{}(&self) -> {} {{\n'.format(attr.name, attr.attr_type))
-            ofs.write('        {}\n'.format(rewrite_code_with_repl(attr.getter_code, {
+            attr_ty = attr.attr_type
+            attr_getter_code = attr.getter_code
+            if attr.optional:
+                # For optional attrs we need to add extra code to check for missing attr.
+                attr_ty = 'Option<{}>'.format(attr_ty)
+                attr_getter_code = 'if self.has_attr($attr_symbol) {{ Some({}) }} else {{ None }}'.format(attr_getter_code)
+            
+            ofs.write('    pub fn get_{}(&self) -> {} {{\n'.format(attr.name, attr_ty))
+            ofs.write('        {}\n'.format(rewrite_code_with_repl(attr_getter_code, {
                 'attr_symbol': full_sym_name,
             })))
             ofs.write('    }\n\n')
-            if not self.gen_minimal_fns_set:
+            if attr.optional:
+                ofs.write(COPE_OPDEF_GETTER_OPTIONAL_ATTR.format(name=attr.name, attr_sym_name=full_sym_name))
+            else:
                 ofs.write(COPE_OPDEF_GETTER_ATTR.format(name=attr.name, attr_sym_name=full_sym_name))
         
         # Generate all blocks getters
@@ -219,7 +238,7 @@ class OpDefInfos:
         ofs.write('\n\n')
 
     def _gen_register_fun(self, ofs):
-        ofs.write('fn register_{}_op(ctx: &mut IRContext) {{'.format(self.name_snake_case))
+        ofs.write('fn register_{}_op(ctx: &mut ContextRegistry) {{'.format(self.name_snake_case))
         ofs.write('    let mut infos = OperationTypeBuilder::new();\n')
         ofs.write('    infos.set_opname({}_OPNAME);\n'.format(self.class_name_upper))
         ofs.write('    infos.set_impl::<{}>();\n'.format(self.class_name))
@@ -258,7 +277,11 @@ class OpDefInfos:
             ofs.write('{}: Type'.format(val.name))
         ofs.write(') -> OpImplBuilderState<Self> {\n')
 
-        ofs.write("        let mut st = OpImplBuilderState::make();\n")
+        if first_input:
+            # Special case, nohting to build, don't make it a mut.
+            ofs.write("        let st = OpImplBuilderState::make();\n")
+        else:
+            ofs.write("        let mut st = OpImplBuilderState::make();\n")
         
         # Set the inputs.
         if len(self.inputs) > 0:
@@ -604,14 +627,19 @@ def generate_registered_ops(ofs, defs, file_defs, args):
     
     ofs.write('pub fn {}(ctx: &mut IRContext) {{\n'.format(fun_name))
 
+    # Build the registrer
+    ofs.write('    ContextRegistry::exec_register_fn(ctx, "__sir/ops/{}", |mut registry| {{\n'.format(fun_name))
+
     # Go through all op defs
     for xgen_def in file_defs:
         if xgen_def.def_kind != 'SIROp':
             continue
         op_def = xgen_def.resolve(defs)
-        ofs.write('    register_{}_op(ctx);\n'.format(op_def.name_snake_case))
+        ofs.write('        register_{}_op(&mut registry);\n'.format(op_def.name_snake_case))
         if op_def.has_constant_builder:
-            ofs.write('    ctx.register_constant_builder({}::build_constant);\n'.format(op_def.class_name))
+            ofs.write('        registry.register_constant_builder({}::build_constant);\n'.format(op_def.class_name))
+
+    ofs.write('    });\n')
     ofs.write('}\n\n')
 
 
@@ -656,6 +684,13 @@ impl<'a> OperationImpl<'a> for {class_name}<'a> {{
 COPE_OPDEF_GETTER_ATTR = '''
     pub fn get_{name}_attr(&self) -> &'a Attribute {{
         self.get_attr({attr_sym_name}).expect("Missing `{name}` attribute")
+    }}
+
+'''
+
+COPE_OPDEF_GETTER_OPTIONAL_ATTR = '''
+    pub fn get_{name}_attr(&self) -> Option<&'a Attribute> {{
+        self.get_attr({attr_sym_name})
     }}
 
 '''

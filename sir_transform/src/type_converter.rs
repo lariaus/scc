@@ -1,4 +1,4 @@
-use crate::types::Type;
+use sir_core::types::Type;
 
 // Helper trait to convert types.
 // Mostly used for tranforms / passes.

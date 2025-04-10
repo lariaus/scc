@@ -17,6 +17,7 @@ use sir_core::{
     types::{PointerType, Type},
     value::Value,
 };
+use sir_transform::context_registry::ContextRegistry;
 
 /////////////////////////////////////////////////////////////////////////
 // MemLoadOp implementation
@@ -156,7 +157,7 @@ impl<'a> MemLoadOp<'a> {
     }
 }
 
-fn register_mem_load_op(ctx: &mut IRContext) {
+fn register_mem_load_op(ctx: &mut ContextRegistry) {
     let mut infos = OperationTypeBuilder::new();
     infos.set_opname(MEM_LOAD_OPNAME);
     infos.set_impl::<MemLoadOp>();
@@ -331,7 +332,7 @@ impl<'a> MemStoreOp<'a> {
     }
 }
 
-fn register_mem_store_op(ctx: &mut IRContext) {
+fn register_mem_store_op(ctx: &mut ContextRegistry) {
     let mut infos = OperationTypeBuilder::new();
     infos.set_opname(MEM_STORE_OPNAME);
     infos.set_impl::<MemStoreOp>();
@@ -529,7 +530,7 @@ impl<'a> MemAllocaOp<'a> {
     }
 }
 
-fn register_mem_alloca_op(ctx: &mut IRContext) {
+fn register_mem_alloca_op(ctx: &mut ContextRegistry) {
     let mut infos = OperationTypeBuilder::new();
     infos.set_opname(MEM_ALLOCA_OPNAME);
     infos.set_impl::<MemAllocaOp>();
@@ -546,9 +547,11 @@ fn register_mem_alloca_op(ctx: &mut IRContext) {
 
 // @XGENBEGIN RegisterOps register_mem_ops
 pub fn register_mem_ops(ctx: &mut IRContext) {
-    register_mem_load_op(ctx);
-    register_mem_store_op(ctx);
-    register_mem_alloca_op(ctx);
+    ContextRegistry::exec_register_fn(ctx, "__sir/ops/register_mem_ops", |mut registry| {
+        register_mem_load_op(&mut registry);
+        register_mem_store_op(&mut registry);
+        register_mem_alloca_op(&mut registry);
+    });
 }
 
 // @XGENEND

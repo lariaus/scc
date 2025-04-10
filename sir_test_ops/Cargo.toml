@@ -1,0 +1,16 @@
+[package]
+name = "sir_test_ops"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+diagnostics = { path = "../diagnostics" }
+iostreams = { path = "../iostreams" }
+parse = { path = "../parse" }
+sir_core = { path = "../sir_core" }
+sir_transform = { path = "../sir_transform" }
+
+[dev-dependencies]
+sir_opt = { path = "../sir_opt" }
+sir_transform = { path = "../sir_transform" }
+xtest = { path = "../xtest" }
